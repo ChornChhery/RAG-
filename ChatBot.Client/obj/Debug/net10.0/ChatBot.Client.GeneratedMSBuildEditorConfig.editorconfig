@@ -59,3 +59,11 @@ build_metadata.AdditionalFiles.CssScope = b-8zwvc0k0n6
 [D:/Jame/ChatbotRag/ChatBot.Client/Layout/NavMenu.razor]
 build_metadata.AdditionalFiles.TargetPath = TGF5b3V0XE5hdk1lbnUucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = b-hcm32kcd4o
+
+[D:/Jame/ChatbotRag/ChatBot.Client/Pages/Chat.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ2hhdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = b-umbufaisxs
+
+[D:/Jame/ChatbotRag/ChatBot.Client/Pages/Rag.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUmFnLnJhem9y
+build_metadata.AdditionalFiles.CssScope = b-jwsdo6xomk
