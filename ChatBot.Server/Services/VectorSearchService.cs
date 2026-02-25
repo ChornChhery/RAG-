@@ -8,7 +8,7 @@ namespace ChatBot.Server.Services;
 public class VectorSearchService(ChatbotDbContext db, ILogger<VectorSearchService> logger)
 {
     // Minimum similarity score to be considered relevant (0.0 - 1.0)
-    private const double MinSimilarityThreshold = 0.3;
+    private const double MinSimilarityThreshold = 0.7;
 
     public async Task<List<DocumentChunkResult>> SearchAsync(
         float[] queryEmbedding,

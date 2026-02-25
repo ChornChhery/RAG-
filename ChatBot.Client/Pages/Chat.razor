@@ -6,39 +6,27 @@
 
 <div class="chat-page">
 
-    <!-- ── Sidebar ── -->
-    <aside class="chat-sidebar">
-        <h3><span class="material-symbols-rounded">folder_open</span> Documents</h3>
-
-        <div class="doc-filter">
-            <label>
-                <input type="radio" name="docFilter"
-                       checked="@(_selectedDocumentId == null)"
-                       @onchange="() => _selectedDocumentId = null" />
-                All Documents
-            </label>
-
-            @foreach (var doc in _documents.Where(d => d.Status == DocumentStatus.Ready))
-            {
-                <label>
-                    <input type="radio" name="docFilter"
-                           checked="@(_selectedDocumentId == doc.Id)"
-                           @onchange="() => _selectedDocumentId = doc.Id" />
-                    @doc.FileName
-                </label>
-            }
+    <!-- ── Top Nav Bar ── -->
+    <header class="chat-nav">
+        <div class="chat-nav-left">
+            <span class="nav-logo">
+                <span class="material-symbols-rounded">auto_awesome</span>
+                RAG Chat
+            </span>
         </div>
-
-        <a href="/rag" class="btn-upload-link">
-            <span class="material-symbols-rounded">add</span> Upload Documents
-        </a>
-
-        <div class="connection-status @(GetConnectionStatus().ToLower().Replace(" ", "-"))">
-            ● @GetConnectionStatus()
+        <div class="chat-nav-right">
+            <div class="connection-pill @(GetConnectionStatus().ToLower().Replace(" ", "-"))">
+                <span class="dot"></span>
+                @GetConnectionStatus()
+            </div>
+            <a href="/rag" class="btn-nav">
+                <span class="material-symbols-rounded">folder_open</span>
+                Documents
+            </a>
         </div>
-    </aside>
+    </header>
 
-    <!-- ── Main Chat Area ── -->
+    <!-- ── Chat Body ── -->
     <main class="chat-main">
 
         <!-- Messages -->
@@ -46,24 +34,25 @@
             @if (_messages.Count == 0)
             {
                 <div class="empty-state">
-                    <span class="material-symbols-rounded empty-icon">chat</span>
-                    <p>Ask anything about your uploaded documents.</p>
+                    <div class="empty-icon-wrap">
+                        <span class="material-symbols-rounded">chat_bubble</span>
+                    </div>
+                    <h2>How can I help you?</h2>
+                    <p>Ask me anything about your uploaded documents, or just chat!</p>
                 </div>
             }
 
             @foreach (var msg in _messages)
             {
                 <div class="message @(msg.Role == MessageRole.User ? "user" : "assistant")">
-                    <div class="message-avatar">
-                        @if (msg.Role == MessageRole.User)
-                        {
-                            <span class="material-symbols-rounded">person</span>
-                        }
-                        else
-                        {
-                            <span class="material-symbols-rounded">smart_toy</span>
-                        }
-                    </div>
+
+                    @if (msg.Role == MessageRole.Assistant)
+                    {
+                        <div class="avatar assistant-avatar">
+                            <span class="material-symbols-rounded">auto_awesome</span>
+                        </div>
+                    }
+
                     <div class="message-body">
                         <div class="message-content">
                             @if (msg.Role == MessageRole.Assistant)
@@ -71,7 +60,7 @@
                                 @((MarkupString)RenderMarkdown(msg.Content))
                                 @if (msg.IsStreaming)
                                 {
-                                    <span class="typing-cursor">▌</span>
+                                    <span class="typing-cursor"></span>
                                 }
                             }
                             else
@@ -83,7 +72,8 @@
                         @if (msg.SourceDocuments.Count > 0)
                         {
                             <div class="message-sources">
-                                <span class="material-symbols-rounded">menu_book</span> Sources: @string.Join(", ", msg.SourceDocuments)
+                                <span class="material-symbols-rounded">menu_book</span>
+                                @string.Join(", ", msg.SourceDocuments)
                             </div>
                         }
 
@@ -91,6 +81,13 @@
                             @msg.Timestamp.ToLocalTime().ToString("HH:mm")
                         </div>
                     </div>
+
+                    @if (msg.Role == MessageRole.User)
+                    {
+                        <div class="avatar user-avatar">
+                            <span class="material-symbols-rounded">person</span>
+                        </div>
+                    }
                 </div>
             }
         </div>
@@ -99,35 +96,40 @@
         @if (_errorMessage is not null)
         {
             <div class="error-banner">
-                <span class="material-symbols-rounded">warning</span> @_errorMessage
-                <button @onclick="() => _errorMessage = null">✕</button>
+                <span class="material-symbols-rounded">warning</span>
+                @_errorMessage
+                <button @onclick="() => _errorMessage = null">
+                    <span class="material-symbols-rounded">close</span>
+                </button>
             </div>
         }
 
         <!-- Input Area -->
         <div class="chat-input-area">
-            <textarea
-                class="chat-input"
-                placeholder="Ask a question about your documents... (Enter to send)"
-                @bind="_userInput"
-                @bind:event="oninput"
-                @onkeydown="HandleKeyDown"
-                disabled="@(!_isConnected || _isStreaming)"
-                rows="1">
-            </textarea>
-            <button class="btn-send"
-                    @onclick="SendMessageAsync"
-                    disabled="@(!_isConnected || _isStreaming || string.IsNullOrWhiteSpace(_userInput))">
-                @if (_isStreaming)
-                {
-                    <span class="spinner"></span>
-                }
-                else
-                {
-                    <span>Send</span>
-                    <span class="material-symbols-rounded">send</span>
-                }
-            </button>
+            <div class="input-box">
+                <textarea
+                    class="chat-input"
+                    placeholder="Message RAG Chat..."
+                    @bind="_userInput"
+                    @bind:event="oninput"
+                    @onkeydown="HandleKeyDown"
+                    disabled="@(!_isConnected || _isStreaming)"
+                    rows="1">
+                </textarea>
+                <button class="btn-send"
+                        @onclick="SendMessageAsync"
+                        disabled="@(!_isConnected || _isStreaming || string.IsNullOrWhiteSpace(_userInput))">
+                    @if (_isStreaming)
+                    {
+                        <span class="spinner"></span>
+                    }
+                    else
+                    {
+                        <span class="material-symbols-rounded">arrow_upward</span>
+                    }
+                </button>
+            </div>
+            <p class="input-hint">Press Enter to send · Shift+Enter for new line</p>
         </div>
 
     </main>

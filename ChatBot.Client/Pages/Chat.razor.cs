@@ -4,7 +4,6 @@ using ChatBot.Share.Enums;
 using Markdig;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.SignalR.Client;
-using System.Net.Http.Json;
 
 namespace ChatBot.Client.Pages;
 
@@ -14,9 +13,7 @@ public partial class Chat : ComponentBase, IAsyncDisposable
 
     // ── State ──────────────────────────────────────────────────────────────
     private List<ChatMessageDto> _messages = [];
-    private List<DocumentDto> _documents = [];
     private string _userInput = string.Empty;
-    private Guid? _selectedDocumentId = null;
     private bool _isConnected = false;
     private bool _isStreaming = false;
     private string? _errorMessage = null;
@@ -30,10 +27,9 @@ public partial class Chat : ComponentBase, IAsyncDisposable
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadDocumentsAsync();
         await ConnectToHubAsync();
     }
-    
+
     private async Task ConnectToHubAsync()
     {
         _hubConnection = new HubConnectionBuilder()
@@ -41,10 +37,9 @@ public partial class Chat : ComponentBase, IAsyncDisposable
             .WithAutomaticReconnect()
             .Build();
 
-        // ── Listen: incoming token chunk ───────────────────────────────────
+        // ── Incoming token ─────────────────────────────────────────────────
         _hubConnection.On<StreamToken>(HubMethods.ReceiveToken, token =>
         {
-            // Find message by MessageId OR by current streaming ID as fallback
             var msg = _messages.FirstOrDefault(m => m.Id == token.MessageId)
                 ?? _messages.LastOrDefault(m => m.Role == MessageRole.Assistant && m.IsStreaming);
 
@@ -62,7 +57,7 @@ public partial class Chat : ComponentBase, IAsyncDisposable
             InvokeAsync(StateHasChanged);
         });
 
-        // ── Listen: chat complete with sources ─────────────────────────────
+        // ── Chat complete with sources ─────────────────────────────────────
         _hubConnection.On<List<DocumentChunkResult>>(HubMethods.ChatComplete, sources =>
         {
             var lastMsg = _messages.LastOrDefault(m => m.Role == MessageRole.Assistant);
@@ -73,7 +68,7 @@ public partial class Chat : ComponentBase, IAsyncDisposable
             InvokeAsync(StateHasChanged);
         });
 
-        // ── Listen: error ──────────────────────────────────────────────────
+        // ── Error ──────────────────────────────────────────────────────────
         _hubConnection.On<string>(HubMethods.ReceiveError, error =>
         {
             _errorMessage = error;
@@ -88,65 +83,50 @@ public partial class Chat : ComponentBase, IAsyncDisposable
 
     // ── Send message ───────────────────────────────────────────────────────
 
-private async Task SendMessageAsync()
-{
-    if (string.IsNullOrWhiteSpace(_userInput) || !_isConnected || _isStreaming)
-        return;
-
-    _errorMessage = null;
-
-    _messages.Add(new ChatMessageDto
+    private async Task SendMessageAsync()
     {
-        Role      = MessageRole.User,
-        Content   = _userInput,
-        Timestamp = DateTime.UtcNow
-    });
+        if (string.IsNullOrWhiteSpace(_userInput) || !_isConnected || _isStreaming)
+            return;
 
-    var assistantMsg = new ChatMessageDto
-    {
-        Role        = MessageRole.Assistant,
-        Content     = string.Empty,
-        IsStreaming = true,
-        Timestamp   = DateTime.UtcNow
-    };
-    _messages.Add(assistantMsg);
-    _currentStreamingId = assistantMsg.Id;
-    _isStreaming        = true;
+        _errorMessage = null;
 
-    var request = new ChatRequest
-    {
-        Question   = _userInput,
-        DocumentId = _selectedDocumentId,
-        TopK       = 5,
-        History    = _messages.SkipLast(2).ToList() // exclude user + empty assistant
-    };
+        _messages.Add(new ChatMessageDto
+        {
+            Role      = MessageRole.User,
+            Content   = _userInput,
+            Timestamp = DateTime.UtcNow
+        });
 
-    var messageId = assistantMsg.Id; // ← capture the ID
-    _userInput = string.Empty;
-    StateHasChanged();
+        var assistantMsg = new ChatMessageDto
+        {
+            Role        = MessageRole.Assistant,
+            Content     = string.Empty,
+            IsStreaming = true,
+            Timestamp   = DateTime.UtcNow
+        };
+        _messages.Add(assistantMsg);
+        _currentStreamingId = assistantMsg.Id;
+        _isStreaming        = true;
 
-    // ← Send messageId along with request
-    await _hubConnection!.InvokeAsync(HubMethods.SendMessage, request, messageId);
-}
+        var request = new ChatRequest
+        {
+            Question   = _userInput,
+            DocumentId = null, // always search all documents
+            TopK       = 5,
+            History    = _messages.SkipLast(2).ToList()
+        };
+
+        var messageId = assistantMsg.Id;
+        _userInput = string.Empty;
+        StateHasChanged();
+
+        await _hubConnection!.InvokeAsync(HubMethods.SendMessage, request, messageId);
+    }
 
     private async Task HandleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !e.ShiftKey)
             await SendMessageAsync();
-    }
-
-    // ── Documents ──────────────────────────────────────────────────────────
-
-    private async Task LoadDocumentsAsync()
-    {
-        try
-        {
-            _documents = await Http.GetFromJsonAsync<List<DocumentDto>>("api/documents") ?? [];
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Could not load documents: {ex.Message}";
-        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
