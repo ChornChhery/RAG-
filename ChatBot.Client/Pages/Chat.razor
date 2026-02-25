@@ -8,7 +8,7 @@
 
     <!-- ── Sidebar ── -->
     <aside class="chat-sidebar">
-        <h3>📄 Documents</h3>
+        <h3><span class="material-symbols-rounded">folder_open</span> Documents</h3>
 
         <div class="doc-filter">
             <label>
@@ -29,7 +29,9 @@
             }
         </div>
 
-        <a href="/rag" class="btn-upload-link">➕ Upload Documents</a>
+        <a href="/rag" class="btn-upload-link">
+            <span class="material-symbols-rounded">add</span> Upload Documents
+        </a>
 
         <div class="connection-status @(GetConnectionStatus().ToLower().Replace(" ", "-"))">
             ● @GetConnectionStatus()
@@ -44,7 +46,7 @@
             @if (_messages.Count == 0)
             {
                 <div class="empty-state">
-                    <span>💬</span>
+                    <span class="material-symbols-rounded empty-icon">chat</span>
                     <p>Ask anything about your uploaded documents.</p>
                 </div>
             }
@@ -53,7 +55,14 @@
             {
                 <div class="message @(msg.Role == MessageRole.User ? "user" : "assistant")">
                     <div class="message-avatar">
-                        @(msg.Role == MessageRole.User ? "🧑" : "🤖")
+                        @if (msg.Role == MessageRole.User)
+                        {
+                            <span class="material-symbols-rounded">person</span>
+                        }
+                        else
+                        {
+                            <span class="material-symbols-rounded">smart_toy</span>
+                        }
                     </div>
                     <div class="message-body">
                         <div class="message-content">
@@ -74,7 +83,7 @@
                         @if (msg.SourceDocuments.Count > 0)
                         {
                             <div class="message-sources">
-                                <span>📚 Sources: @string.Join(", ", msg.SourceDocuments)</span>
+                                <span class="material-symbols-rounded">menu_book</span> Sources: @string.Join(", ", msg.SourceDocuments)
                             </div>
                         }
 
@@ -90,7 +99,7 @@
         @if (_errorMessage is not null)
         {
             <div class="error-banner">
-                ⚠️ @_errorMessage
+                <span class="material-symbols-rounded">warning</span> @_errorMessage
                 <button @onclick="() => _errorMessage = null">✕</button>
             </div>
         }
@@ -115,7 +124,8 @@
                 }
                 else
                 {
-                    <span>Send ➤</span>
+                    <span>Send</span>
+                    <span class="material-symbols-rounded">send</span>
                 }
             </button>
         </div>

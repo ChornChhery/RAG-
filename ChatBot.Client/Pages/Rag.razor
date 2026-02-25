@@ -7,10 +7,12 @@
 
     <header class="rag-header">
         <div>
-            <h1>📄 Document Management</h1>
+            <h1><span class="material-symbols-rounded">description</span> Document Management</h1>
             <p>Upload documents to build the knowledge base. Once processed, they are available in the Chat page.</p>
         </div>
-        <a href="/chat" class="btn-go-chat">💬 Go to Chat</a>
+        <a href="/chat" class="btn-go-chat">
+            <span class="material-symbols-rounded">chat</span> Go to Chat
+        </a>
     </header>
 
     <!-- ── Upload Zone ── -->
@@ -23,7 +25,7 @@
             }
             else
             {
-                <span class="upload-icon">⬆️</span>
+                <span class="material-symbols-rounded upload-icon">upload</span>
                 <span class="upload-label">Drop files here or <strong>click to browse</strong></span>
                 <span class="upload-hint">Supported: PDF, TXT, MD — Max 50 MB each</span>
             }
@@ -44,7 +46,7 @@
         @if (_errorMessage is not null)
         {
             <div class="alert alert-error">
-                ⚠️ @_errorMessage
+                <span class="material-symbols-rounded">warning</span> @_errorMessage
                 <button @onclick="() => _errorMessage = null">✕</button>
             </div>
         }
@@ -55,7 +57,14 @@
         <div class="doc-list-header">
             <h2>Uploaded Documents (@_documents.Count)</h2>
             <button class="btn-refresh" @onclick="RefreshStatusAsync" disabled="@_isLoading">
-                @if (_isLoading) { <span class="mini-spinner"></span> } else { <span>🔄 Refresh</span> }
+                @if (_isLoading)
+                {
+                    <span class="mini-spinner"></span>
+                }
+                else
+                {
+                    <span class="material-symbols-rounded">refresh</span>
+                }
             </button>
         </div>
 
@@ -66,7 +75,7 @@
         else if (_documents.Count == 0)
         {
             <div class="empty-state">
-                <span>📭</span>
+                <span class="material-symbols-rounded empty-icon">inbox</span>
                 <p>No documents yet. Upload your first document above.</p>
             </div>
         }
@@ -89,8 +98,8 @@
                         {
                             <tr>
                                 <td class="doc-name">
-                                    <span class="doc-icon">
-                                        @(doc.ContentType.Contains("pdf") ? "📄" : "📝")
+                                    <span class="doc-icon material-symbols-rounded">
+                                        @(doc.ContentType.Contains("pdf") ? "picture_as_pdf" : "article")
                                     </span>
                                     @doc.FileName
                                 </td>
@@ -103,13 +112,13 @@
                                     </span>
                                     @if (doc.Status == DocumentStatus.Failed && doc.ErrorMessage is not null)
                                     {
-                                        <div class="error-hint" title="@doc.ErrorMessage">ⓘ</div>
+                                        <span class="material-symbols-rounded error-hint" title="@doc.ErrorMessage">info</span>
                                     }
                                 </td>
                                 <td>
                                     <button class="btn-delete"
                                             @onclick="() => DeleteDocumentAsync(doc.Id, doc.FileName)">
-                                        🗑 Delete
+                                        <span class="material-symbols-rounded">delete</span> Delete
                                     </button>
                                 </td>
                             </tr>
