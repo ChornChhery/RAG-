@@ -1,0 +1,124 @@
+@page "/chat"
+@using ChatBot.Share.Enums
+@inject HttpClient Http
+
+<PageTitle>Chat — RAG Chatbot</PageTitle>
+
+<div class="chat-page">
+
+    <!-- ── Sidebar ── -->
+    <aside class="chat-sidebar">
+        <h3>📄 Documents</h3>
+
+        <div class="doc-filter">
+            <label>
+                <input type="radio" name="docFilter"
+                       checked="@(_selectedDocumentId == null)"
+                       @onchange="() => _selectedDocumentId = null" />
+                All Documents
+            </label>
+
+            @foreach (var doc in _documents.Where(d => d.Status == DocumentStatus.Ready))
+            {
+                <label>
+                    <input type="radio" name="docFilter"
+                           checked="@(_selectedDocumentId == doc.Id)"
+                           @onchange="() => _selectedDocumentId = doc.Id" />
+                    @doc.FileName
+                </label>
+            }
+        </div>
+
+        <a href="/rag" class="btn-upload-link">➕ Upload Documents</a>
+
+        <div class="connection-status @(GetConnectionStatus().ToLower().Replace(" ", "-"))">
+            ● @GetConnectionStatus()
+        </div>
+    </aside>
+
+    <!-- ── Main Chat Area ── -->
+    <main class="chat-main">
+
+        <!-- Messages -->
+        <div class="message-list" id="messageList">
+            @if (_messages.Count == 0)
+            {
+                <div class="empty-state">
+                    <span>💬</span>
+                    <p>Ask anything about your uploaded documents.</p>
+                </div>
+            }
+
+            @foreach (var msg in _messages)
+            {
+                <div class="message @(msg.Role == MessageRole.User ? "user" : "assistant")">
+                    <div class="message-avatar">
+                        @(msg.Role == MessageRole.User ? "🧑" : "🤖")
+                    </div>
+                    <div class="message-body">
+                        <div class="message-content">
+                            @if (msg.Role == MessageRole.Assistant)
+                            {
+                                @((MarkupString)RenderMarkdown(msg.Content))
+                                @if (msg.IsStreaming)
+                                {
+                                    <span class="typing-cursor">▌</span>
+                                }
+                            }
+                            else
+                            {
+                                @msg.Content
+                            }
+                        </div>
+
+                        @if (msg.SourceDocuments.Count > 0)
+                        {
+                            <div class="message-sources">
+                                <span>📚 Sources: @string.Join(", ", msg.SourceDocuments)</span>
+                            </div>
+                        }
+
+                        <div class="message-time">
+                            @msg.Timestamp.ToLocalTime().ToString("HH:mm")
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Error Banner -->
+        @if (_errorMessage is not null)
+        {
+            <div class="error-banner">
+                ⚠️ @_errorMessage
+                <button @onclick="() => _errorMessage = null">✕</button>
+            </div>
+        }
+
+        <!-- Input Area -->
+        <div class="chat-input-area">
+            <textarea
+                class="chat-input"
+                placeholder="Ask a question about your documents... (Enter to send)"
+                @bind="_userInput"
+                @bind:event="oninput"
+                @onkeydown="HandleKeyDown"
+                disabled="@(!_isConnected || _isStreaming)"
+                rows="1">
+            </textarea>
+            <button class="btn-send"
+                    @onclick="SendMessageAsync"
+                    disabled="@(!_isConnected || _isStreaming || string.IsNullOrWhiteSpace(_userInput))">
+                @if (_isStreaming)
+                {
+                    <span class="spinner"></span>
+                }
+                else
+                {
+                    <span>Send ➤</span>
+                }
+            </button>
+        </div>
+
+    </main>
+</div>

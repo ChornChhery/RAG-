@@ -16,11 +16,8 @@ builder.Services.AddDbContext<ChatbotDbContext>(options =>
 var ollamaEndpoint = new Uri(
     builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434");
 
-// Chat model (qwen3 or llama3.2:3b)
-var chatModelName = builder.Configuration["Ollama:ChatModel"] ?? "qwen3:latest";
-
-// Embedding model
-var embedModelName = builder.Configuration["Ollama:EmbedModel"] ?? "nomic-embed-text:latest";
+var chatModelName = builder.Configuration["Ollama:ChatModel"] ?? "llama3.2:3b";
+var embedModelName = builder.Configuration["Ollama:EmbedModel"] ?? "mxbai-embed-large:latest";
 
 builder.Services.AddSingleton<IChatClient>(_ =>
     new OllamaApiClient(ollamaEndpoint, chatModelName));
@@ -37,7 +34,7 @@ builder.Services.AddScoped<RagService>();
 // ── SignalR ────────────────────────────────────────────────────────────────
 builder.Services.AddSignalR(options =>
 {
-    options.MaximumReceiveMessageSize = 1024 * 1024; // 1 MB
+    options.MaximumReceiveMessageSize = 1024 * 1024;
 });
 
 // ── Controllers + CORS ────────────────────────────────────────────────────
@@ -45,14 +42,14 @@ builder.Services.AddControllers();
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
-        policy.WithOrigins("https://localhost:7001")
+        policy.WithOrigins("http://localhost:5105")
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials()); // Required for SignalR
+              .AllowCredentials());
 });
 
 builder.Services.AddEndpointsApiExplorer();
-// builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
@@ -66,20 +63,15 @@ using (var scope = app.Services.CreateScope())
 // ── Middleware ─────────────────────────────────────────────────────────────
 if (app.Environment.IsDevelopment())
 {
-    // app.UseSwagger();
-    // app.UseSwaggerUI();
-    app.UseWebAssemblyDebugging();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
 app.UseCors();
-app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<ChatHub>(HubRoutes.Chat);
-app.MapFallbackToFile("index.html");
 
 app.Run();

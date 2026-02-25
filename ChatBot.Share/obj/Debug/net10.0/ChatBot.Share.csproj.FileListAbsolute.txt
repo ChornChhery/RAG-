@@ -1,0 +1,12 @@
+D:\Jame\ChatbotRag\ChatBot.Share\bin\Debug\net10.0\ChatBot.Share.deps.json
+D:\Jame\ChatbotRag\ChatBot.Share\bin\Debug\net10.0\ChatBot.Share.dll
+D:\Jame\ChatbotRag\ChatBot.Share\bin\Debug\net10.0\ChatBot.Share.pdb
+D:\Jame\ChatbotRag\ChatBot.Share\obj\Debug\net10.0\ChatBot.Share.GeneratedMSBuildEditorConfig.editorconfig
+D:\Jame\ChatbotRag\ChatBot.Share\obj\Debug\net10.0\ChatBot.Share.AssemblyInfoInputs.cache
+D:\Jame\ChatbotRag\ChatBot.Share\obj\Debug\net10.0\ChatBot.Share.AssemblyInfo.cs
+D:\Jame\ChatbotRag\ChatBot.Share\obj\Debug\net10.0\ChatBot.Share.csproj.CoreCompileInputs.cache
+D:\Jame\ChatbotRag\ChatBot.Share\obj\Debug\net10.0\ChatBot.Share.sourcelink.json
+D:\Jame\ChatbotRag\ChatBot.Share\obj\Debug\net10.0\ChatBot.Share.dll
+D:\Jame\ChatbotRag\ChatBot.Share\obj\Debug\net10.0\refint\ChatBot.Share.dll
+D:\Jame\ChatbotRag\ChatBot.Share\obj\Debug\net10.0\ChatBot.Share.pdb
+D:\Jame\ChatbotRag\ChatBot.Share\obj\Debug\net10.0\ref\ChatBot.Share.dll

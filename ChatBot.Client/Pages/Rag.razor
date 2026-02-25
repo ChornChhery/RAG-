@@ -1,0 +1,122 @@
+@page "/rag"
+@using ChatBot.Share.Enums
+
+<PageTitle>Documents — RAG Chatbot</PageTitle>
+
+<div class="rag-page">
+
+    <header class="rag-header">
+        <div>
+            <h1>📄 Document Management</h1>
+            <p>Upload documents to build the knowledge base. Once processed, they are available in the Chat page.</p>
+        </div>
+        <a href="/chat" class="btn-go-chat">💬 Go to Chat</a>
+    </header>
+
+    <!-- ── Upload Zone ── -->
+    <section class="upload-section">
+        <label class="upload-zone @(_isUploading ? "uploading" : "")">
+            @if (_isUploading)
+            {
+                <div class="upload-spinner"></div>
+                <span>Uploading...</span>
+            }
+            else
+            {
+                <span class="upload-icon">⬆️</span>
+                <span class="upload-label">Drop files here or <strong>click to browse</strong></span>
+                <span class="upload-hint">Supported: PDF, TXT, MD — Max 50 MB each</span>
+            }
+            <InputFile OnChange="OnFilesSelected"
+                       multiple
+                       accept=".pdf,.txt,.md"
+                       disabled="@_isUploading"
+                       class="upload-input" />
+        </label>
+
+        @if (_uploadMessage is not null)
+        {
+            <div class="alert @(_uploadSuccess ? "alert-success" : "alert-error")">
+                @_uploadMessage
+            </div>
+        }
+
+        @if (_errorMessage is not null)
+        {
+            <div class="alert alert-error">
+                ⚠️ @_errorMessage
+                <button @onclick="() => _errorMessage = null">✕</button>
+            </div>
+        }
+    </section>
+
+    <!-- ── Document List ── -->
+    <section class="doc-list-section">
+        <div class="doc-list-header">
+            <h2>Uploaded Documents (@_documents.Count)</h2>
+            <button class="btn-refresh" @onclick="RefreshStatusAsync" disabled="@_isLoading">
+                @if (_isLoading) { <span class="mini-spinner"></span> } else { <span>🔄 Refresh</span> }
+            </button>
+        </div>
+
+        @if (_isLoading && _documents.Count == 0)
+        {
+            <div class="loading-state">Loading documents...</div>
+        }
+        else if (_documents.Count == 0)
+        {
+            <div class="empty-state">
+                <span>📭</span>
+                <p>No documents yet. Upload your first document above.</p>
+            </div>
+        }
+        else
+        {
+            <div class="doc-table-wrapper">
+                <table class="doc-table">
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Size</th>
+                            <th>Chunks</th>
+                            <th>Uploaded</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var doc in _documents)
+                        {
+                            <tr>
+                                <td class="doc-name">
+                                    <span class="doc-icon">
+                                        @(doc.ContentType.Contains("pdf") ? "📄" : "📝")
+                                    </span>
+                                    @doc.FileName
+                                </td>
+                                <td>@doc.FileSizeDisplay</td>
+                                <td>@doc.ChunkCount</td>
+                                <td>@doc.UploadedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                                <td>
+                                    <span class="status-badge @GetStatusClass(doc.Status)">
+                                        @doc.StatusDisplay
+                                    </span>
+                                    @if (doc.Status == DocumentStatus.Failed && doc.ErrorMessage is not null)
+                                    {
+                                        <div class="error-hint" title="@doc.ErrorMessage">ⓘ</div>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn-delete"
+                                            @onclick="() => DeleteDocumentAsync(doc.Id, doc.FileName)">
+                                        🗑 Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

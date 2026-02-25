@@ -89,6 +89,10 @@
             "PdfPig": {
               "target": "Package",
               "version": "[0.1.9, )"
+            },
+            "Swashbuckle.AspNetCore": {
+              "target": "Package",
+              "version": "[6.9.0, )"
             }
           },
           "imports": [
