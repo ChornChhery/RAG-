@@ -10,30 +10,44 @@ using UglyToad.PdfPig.Content;
 namespace ChatBot.Server.Services;
 
 public class EmbeddingService(
-    ChatbotDbContext db,
+    IServiceScopeFactory scopeFactory,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     ILogger<EmbeddingService> logger)
 {
-    // ── Chunking settings ──────────────────────────────────────────────────
-    private const int ChunkSize    = 500;  // characters per chunk
-    private const int ChunkOverlap = 100;  // overlap between chunks
+    private const int ChunkSize    = 500;
+    private const int ChunkOverlap = 100;
 
     // ── Main entry point called after file upload ──────────────────────────
-
     public async Task ProcessDocumentAsync(Guid documentId, Stream fileStream, string contentType)
     {
+        // Use a new scope for background processing (since EmbeddingService is Scoped)
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ChatbotDbContext>();
+
         var document = await db.Documents.FindAsync(documentId);
-        if (document is null) return;
+        if (document is null)
+        {
+            logger.LogWarning("Document {Id} not found for processing", documentId);
+            return;
+        }
 
         try
         {
             document.Status = DocumentStatus.Processing;
             await db.SaveChangesAsync();
 
+            logger.LogInformation("Starting processing for document {Id} ({Type})", documentId, contentType);
+
             // 1. Extract raw text from the file
             var pages = ExtractPages(fileStream, contentType);
+            logger.LogInformation("Extracted {Count} pages from document {Id}", pages.Count, documentId);
 
-            // 2. Chunk and embed each page
+            if (pages.Count == 0 || pages.All(p => string.IsNullOrWhiteSpace(p.Text)))
+            {
+                throw new InvalidOperationException("No text could be extracted from the document.");
+            }
+
+            // 2. Chunk text from all pages
             var chunks = new List<DocumentChunk>();
             foreach (var (text, pageNumber) in pages)
             {
@@ -47,38 +61,48 @@ public class EmbeddingService(
                 }));
             }
 
-            // 3. Generate embeddings in batches of 20
-            const int batchSize = 20;
+            logger.LogInformation("Created {Count} chunks for document {Id}", chunks.Count, documentId);
+
+            // 3. Generate embeddings in batches of 10
+            const int batchSize = 10;
             for (int i = 0; i < chunks.Count; i += batchSize)
             {
                 var batch = chunks.Skip(i).Take(batchSize).ToList();
                 var texts = batch.Select(c => c.ChunkText).ToList();
 
+                logger.LogInformation(
+                    "Embedding batch {Batch}/{Total} for document {DocId}",
+                    i / batchSize + 1,
+                    (int)Math.Ceiling(chunks.Count / (double)batchSize),
+                    documentId);
+
                 var embeddings = await embeddingGenerator.GenerateAsync(texts);
 
                 for (int j = 0; j < batch.Count; j++)
                 {
-                    batch[j].EmbeddingJson = JsonSerializer.Serialize(
-                        embeddings[j].Vector.ToArray());
-                }
+                    var vector = embeddings[j].Vector.ToArray();
+                    batch[j].EmbeddingJson = JsonSerializer.Serialize(vector);
 
-                logger.LogInformation(
-                    "Embedded batch {Batch}/{Total} for document {DocId}",
-                    i / batchSize + 1, (int)Math.Ceiling(chunks.Count / (double)batchSize), documentId);
+                    logger.LogDebug(
+                        "Chunk {Idx} embedded — vector length: {Len}",
+                        i + j, vector.Length);
+                }
             }
 
-            // 4. Save all chunks
+            // 4. Save all chunks to DB
             await db.DocumentChunks.AddRangeAsync(chunks);
             document.Status = DocumentStatus.Ready;
             await db.SaveChangesAsync();
 
             logger.LogInformation(
-                "Document {DocId} processed: {Count} chunks", documentId, chunks.Count);
+                "Document {Id} fully processed: {Count} chunks saved with embeddings",
+                documentId, chunks.Count);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to process document {DocId}", documentId);
+            logger.LogError(ex, "Failed to process document {Id}", documentId);
 
+            // Re-fetch to avoid stale state
             var doc = await db.Documents.FindAsync(documentId);
             if (doc is not null)
             {
@@ -89,24 +113,25 @@ public class EmbeddingService(
         }
     }
 
-    // ── Embed a query string for vector search ─────────────────────────────
-
+    // ── Embed a single query string for vector search ──────────────────────
     public async Task<float[]> EmbedQueryAsync(string query)
     {
+        logger.LogInformation("Embedding query: {Q}", query);
         var result = await embeddingGenerator.GenerateAsync([query]);
-        return result[0].Vector.ToArray();
+        var vector = result[0].Vector.ToArray();
+        logger.LogInformation("Query embedded — vector length: {Len}", vector.Length);
+        return vector;
     }
 
     // ── Text extraction ────────────────────────────────────────────────────
-
     private static List<(string Text, int PageNumber)> ExtractPages(Stream stream, string contentType)
     {
-        if (contentType.Contains("pdf"))
+        if (contentType.Contains("pdf", StringComparison.OrdinalIgnoreCase))
             return ExtractFromPdf(stream);
 
-        // Plain text fallback
         using var reader = new StreamReader(stream);
-        return [(reader.ReadToEnd(), 1)];
+        var text = reader.ReadToEnd();
+        return [(text, 1)];
     }
 
     private static List<(string Text, int PageNumber)> ExtractFromPdf(Stream stream)
@@ -123,7 +148,6 @@ public class EmbeddingService(
     }
 
     // ── Text chunking ──────────────────────────────────────────────────────
-
     private static List<(string Text, int Index)> ChunkText(string text, int pageNumber)
     {
         var chunks = new List<(string, int)>();
@@ -132,7 +156,7 @@ public class EmbeddingService(
 
         while (start < text.Length)
         {
-            int end    = Math.Min(start + ChunkSize, text.Length);
+            int end   = Math.Min(start + ChunkSize, text.Length);
             string chunk = text[start..end].Trim();
 
             if (!string.IsNullOrWhiteSpace(chunk))

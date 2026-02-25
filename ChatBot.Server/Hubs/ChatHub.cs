@@ -12,50 +12,48 @@ public class ChatHub(RagService ragService, ILogger<ChatHub> logger) : Hub
     /// The hub streams tokens back one by one via ReceiveToken,
     /// then fires ChatComplete when done.
     /// </summary>
-    public async Task SendMessage(ChatRequest request)
+public async Task SendMessage(ChatRequest request, string messageId)
+{
+    logger.LogInformation("Chat request received: {Q}", request.Question);
+
+    try
     {
-        var messageId = Guid.NewGuid().ToString();
-        logger.LogInformation("Chat request received: {Q}", request.Question);
+        var sources = await ragService.StreamAnswerAsync(
+            request,
+            onToken: async token =>
+            {
+                await Clients.Caller.SendAsync(
+                    HubMethods.ReceiveToken,
+                    new StreamToken
+                    {
+                        Token     = token,
+                        IsFinal   = false,
+                        MessageId = messageId  // ← use client's messageId
+                    });
+            },
+            cancellationToken: Context.ConnectionAborted);
 
-        try
-        {
-            var sources = await ragService.StreamAnswerAsync(
-                request,
-                onToken: async token =>
-                {
-                    await Clients.Caller.SendAsync(
-                        HubMethods.ReceiveToken,
-                        new StreamToken
-                        {
-                            Token     = token,
-                            IsFinal   = false,
-                            MessageId = messageId
-                        });
-                },
-                cancellationToken: Context.ConnectionAborted);
+        await Clients.Caller.SendAsync(
+            HubMethods.ReceiveToken,
+            new StreamToken
+            {
+                Token     = string.Empty,
+                IsFinal   = true,
+                MessageId = messageId  // ← same here
+            });
 
-            // Signal completion with final token + sources
-            await Clients.Caller.SendAsync(
-                HubMethods.ReceiveToken,
-                new StreamToken
-                {
-                    Token     = string.Empty,
-                    IsFinal   = true,
-                    MessageId = messageId
-                });
-
-            await Clients.Caller.SendAsync(HubMethods.ChatComplete, sources);
-        }
-        catch (OperationCanceledException)
-        {
-            logger.LogInformation("Chat stream cancelled by client.");
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error in ChatHub.SendMessage");
-            await Clients.Caller.SendAsync(HubMethods.ReceiveError, ex.Message);
-        }
+        await Clients.Caller.SendAsync(HubMethods.ChatComplete, sources);
     }
+    catch (OperationCanceledException)
+    {
+        logger.LogInformation("Chat stream cancelled by client.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error in ChatHub.SendMessage");
+        await Clients.Caller.SendAsync(HubMethods.ReceiveError, ex.Message);
+    }
+}
 
     public override Task OnConnectedAsync()
     {

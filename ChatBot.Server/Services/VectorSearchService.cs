@@ -1,27 +1,27 @@
 using System.Text.Json;
 using ChatBot.Server.Data;
 using ChatBot.Share.DTOs;
-using ChatBot.Share.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace ChatBot.Server.Services;
 
 public class VectorSearchService(ChatbotDbContext db, ILogger<VectorSearchService> logger)
 {
-    /// <summary>
-    /// Finds the top-K most similar chunks to the query embedding using cosine similarity.
-    /// We fetch all Ready chunks (optionally filtered by documentId) and rank in C#.
-    /// For SQL Server 2025 this could be replaced with VECTOR_DISTANCE() for better performance.
-    /// </summary>
+    // Minimum similarity score to be considered relevant (0.0 - 1.0)
+    private const double MinSimilarityThreshold = 0.3;
+
     public async Task<List<DocumentChunkResult>> SearchAsync(
         float[] queryEmbedding,
         int topK = 5,
         Guid? documentId = null)
     {
-        // Fetch chunks for ready documents only
+        // Fetch all chunks — filter only by documentId if specified
+        // NOTE: We do NOT filter by Status here via EF because Status is stored
+        // as a string "Ready" in SQL but EF enum comparison can sometimes fail.
+        // We filter in memory instead to be safe.
         var query = db.DocumentChunks
             .Include(c => c.Document)
-            .Where(c => c.Document.Status == DocumentStatus.Ready);
+            .AsNoTracking();
 
         if (documentId.HasValue)
             query = query.Where(c => c.DocumentId == documentId.Value);
@@ -32,26 +32,44 @@ public class VectorSearchService(ChatbotDbContext db, ILogger<VectorSearchServic
                 c.Id,
                 c.DocumentId,
                 c.Document.FileName,
+                c.Document.Status,
                 c.ChunkText,
                 c.PageNumber,
                 c.EmbeddingJson
             })
             .ToListAsync();
 
-        logger.LogInformation("Searching {Count} chunks for similarity", chunks.Count);
+        // Filter to only Ready documents in memory (avoids enum/string mismatch)
+        var readyChunks = chunks
+            .Where(c => c.Status == ChatBot.Share.Enums.DocumentStatus.Ready)
+            .ToList();
+
+        logger.LogInformation(
+            "Searching {Count} chunks from Ready documents (total chunks in DB: {Total})",
+            readyChunks.Count, chunks.Count);
+
+        if (readyChunks.Count == 0)
+        {
+            logger.LogWarning("No Ready chunks found. Check document status in DB.");
+            return [];
+        }
 
         // Compute cosine similarity in memory
-        var results = chunks
+        var results = readyChunks
             .Select(c =>
             {
                 float[]? embedding = null;
                 try
                 {
-                    embedding = JsonSerializer.Deserialize<float[]>(c.EmbeddingJson);
+                    if (!string.IsNullOrWhiteSpace(c.EmbeddingJson))
+                        embedding = JsonSerializer.Deserialize<float[]>(c.EmbeddingJson);
                 }
-                catch { /* skip malformed */ }
+                catch (Exception ex)
+                {
+                    logger.LogWarning("Failed to deserialize embedding for chunk {Id}: {Err}", c.Id, ex.Message);
+                }
 
-                double score = embedding is not null
+                double score = embedding is not null && embedding.Length > 0
                     ? CosineSimilarity(queryEmbedding, embedding)
                     : 0;
 
@@ -64,20 +82,31 @@ public class VectorSearchService(ChatbotDbContext db, ILogger<VectorSearchServic
                     SimilarityScore = score
                 };
             })
+            .Where(r => r.SimilarityScore >= MinSimilarityThreshold)
             .OrderByDescending(r => r.SimilarityScore)
             .Take(topK)
             .ToList();
+
+        logger.LogInformation(
+            "Found {Count} chunks above similarity threshold {Threshold}",
+            results.Count, MinSimilarityThreshold);
+
+        if (results.Count > 0)
+        {
+            logger.LogInformation(
+                "Top chunk score: {Score:F4} from '{Doc}'",
+                results[0].SimilarityScore, results[0].DocumentName);
+        }
 
         return results;
     }
 
     // ── Cosine similarity ──────────────────────────────────────────────────
-
     private static double CosineSimilarity(float[] a, float[] b)
     {
         if (a.Length != b.Length) return 0;
 
-        double dot  = 0, normA = 0, normB = 0;
+        double dot = 0, normA = 0, normB = 0;
         for (int i = 0; i < a.Length; i++)
         {
             dot   += a[i] * b[i];

@@ -33,7 +33,7 @@ public partial class Chat : ComponentBase, IAsyncDisposable
         await LoadDocumentsAsync();
         await ConnectToHubAsync();
     }
-
+    
     private async Task ConnectToHubAsync()
     {
         _hubConnection = new HubConnectionBuilder()
@@ -44,7 +44,10 @@ public partial class Chat : ComponentBase, IAsyncDisposable
         // ── Listen: incoming token chunk ───────────────────────────────────
         _hubConnection.On<StreamToken>(HubMethods.ReceiveToken, token =>
         {
-            var msg = _messages.FirstOrDefault(m => m.Id == token.MessageId);
+            // Find message by MessageId OR by current streaming ID as fallback
+            var msg = _messages.FirstOrDefault(m => m.Id == token.MessageId)
+                ?? _messages.LastOrDefault(m => m.Role == MessageRole.Assistant && m.IsStreaming);
+
             if (msg is null) return;
 
             msg.Content    += token.Token;
@@ -85,46 +88,46 @@ public partial class Chat : ComponentBase, IAsyncDisposable
 
     // ── Send message ───────────────────────────────────────────────────────
 
-    private async Task SendMessageAsync()
+private async Task SendMessageAsync()
+{
+    if (string.IsNullOrWhiteSpace(_userInput) || !_isConnected || _isStreaming)
+        return;
+
+    _errorMessage = null;
+
+    _messages.Add(new ChatMessageDto
     {
-        if (string.IsNullOrWhiteSpace(_userInput) || !_isConnected || _isStreaming)
-            return;
+        Role      = MessageRole.User,
+        Content   = _userInput,
+        Timestamp = DateTime.UtcNow
+    });
 
-        _errorMessage = null;
+    var assistantMsg = new ChatMessageDto
+    {
+        Role        = MessageRole.Assistant,
+        Content     = string.Empty,
+        IsStreaming = true,
+        Timestamp   = DateTime.UtcNow
+    };
+    _messages.Add(assistantMsg);
+    _currentStreamingId = assistantMsg.Id;
+    _isStreaming        = true;
 
-        // Add user message
-        _messages.Add(new ChatMessageDto
-        {
-            Role      = MessageRole.User,
-            Content   = _userInput,
-            Timestamp = DateTime.UtcNow
-        });
+    var request = new ChatRequest
+    {
+        Question   = _userInput,
+        DocumentId = _selectedDocumentId,
+        TopK       = 5,
+        History    = _messages.SkipLast(2).ToList() // exclude user + empty assistant
+    };
 
-        // Add placeholder assistant message that will stream in
-        var assistantMsg = new ChatMessageDto
-        {
-            Role        = MessageRole.Assistant,
-            Content     = string.Empty,
-            IsStreaming = true,
-            Timestamp   = DateTime.UtcNow
-        };
-        _messages.Add(assistantMsg);
-        _currentStreamingId = assistantMsg.Id;
-        _isStreaming        = true;
+    var messageId = assistantMsg.Id; // ← capture the ID
+    _userInput = string.Empty;
+    StateHasChanged();
 
-        var request = new ChatRequest
-        {
-            Question         = _userInput,
-            DocumentId       = _selectedDocumentId,
-            TopK             = 5,
-            History          = _messages.SkipLast(1).ToList() // exclude the empty assistant placeholder
-        };
-
-        _userInput = string.Empty;
-        StateHasChanged();
-
-        await _hubConnection!.InvokeAsync(HubMethods.SendMessage, request);
-    }
+    // ← Send messageId along with request
+    await _hubConnection!.InvokeAsync(HubMethods.SendMessage, request, messageId);
+}
 
     private async Task HandleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
