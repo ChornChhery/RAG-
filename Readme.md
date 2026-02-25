@@ -4,6 +4,19 @@ A Retrieval-Augmented Generation (RAG) Chatbot built with .NET 10, Blazor WebAss
 
 ---
 
+## Features ✨
+
+- 📄 **Multi-Format Document Support** — Upload PDF, TXT, and Markdown files
+- 💬 **Real-Time Streaming Chat** — Token-by-token responses via SignalR
+- 🔍 **Vector Search** — Semantic document retrieval using embeddings
+- 🏗️ **Automatic Chunking** — Intelligent document splitting for better context
+- 📌 **Source Attribution** — View which document chunks were used in responses
+- 🎯 **Local LLM** — No cloud dependency, full privacy with Ollama
+- 🚀 **Full-Stack .NET** — Type-safe end-to-end architecture
+- 📊 **SQL Server Backend** — Persistent storage of documents and embeddings
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -42,7 +55,7 @@ ChatBotRAG/
 │
 ├── ChatBot.Server/                  # ASP.NET Core Backend
 │   ├── Controllers/
-│   │   └── DocumentsController.cs   # Upload, list, delete API
+│   │   └── DocumentController.cs    # Upload, list, delete API
 │   ├── Data/
 │   │   └── ChatbotDbContext.cs      # EF Core DbContext
 │   ├── Hubs/
@@ -87,6 +100,22 @@ Pull these models before running the project:
 ollama pull mxbai-embed-large
 ollama pull llama3.2:3b
 ```
+
+---
+
+## How It Works (RAG Architecture)
+
+**Retrieval-Augmented Generation** combines document retrieval with generative AI:
+
+1. **Upload** → Document is split into chunks (⚙️ Processing state)
+2. **Embed** → Each chunk converted to vector via `mxbai-embed-large` 
+3. **Store** → Vectors saved in SQL Server with chunk text
+4. **Query** → User question embedded and compared (cosine similarity)
+5. **Retrieve** → Top matching chunks retrieved from database
+6. **Generate** → Retrieved chunks sent to `llama3.2:3b` as context
+7. **Stream** → LLM response sent token-by-token to client
+
+This ensures responses are grounded in your uploaded documents.
 
 ---
 
@@ -222,15 +251,186 @@ http://localhost:5105
 
 ---
 
+## API Reference
+
+### Document Endpoints
+
+**Upload Document**
+```
+POST /api/document
+Content-Type: multipart/form-data
+
+Body: file (PDF, TXT, or Markdown)
+Response: { documentId: string, fileName: string, status: "Uploading" }
+```
+
+**List Documents**
+```
+GET /api/document
+Response: DocumentDto[]
+```
+
+**Delete Document**
+```
+DELETE /api/document/{id}
+Response: 204 No Content
+```
+
+### SignalR Chat Hub
+
+**Connect to Hub**
+```
+WebSocket: ws://localhost:5087/hubs/chat
+```
+
+**Send Message** (Client → Server)
+```csharp
+await hubConnection.SendAsync("SendMessage", new ChatRequest 
+{ 
+    UserMessage = "Your question", 
+    DocumentId = "doc-id or null for all",
+    ChatHistory = previousMessages
+});
+```
+
+**Receive Token** (Server → Client)
+```csharp
+hubConnection.On<StreamToken>("ReceiveToken", token =>
+{
+    // token.Content contains streamed text
+    // token.IsComplete indicates end of response
+});
+```
+
+---
+
 ## Troubleshooting
 
 | Error | Fix |
 |---|---|
 | `ERR_CONNECTION_REFUSED` on port 5087 | Make sure `ChatBot.Server` is running first |
-| `405 Method Not Allowed` on `/hubs/chat` | Check `Chat.razor.cs` — hub URL must point to port 5087 |
+| `Failed to connect to SignalR hub` | Ensure `Program.cs` client points to `http://localhost:5087` |
 | `dotnet-ef not found` | Run `dotnet tool install --global dotnet-ef` then reopen terminal |
-| `Unable to create DbContext` | Check `Program.cs` uses `ChatbotDbContext` everywhere |
-| Ollama connection error | Run `ollama serve` in a separate terminal |
-| Model not found | Run `ollama pull mxbai-embed-large` and `ollama pull llama3.2:3b` |
-| `wwwroot not found` warning | Normal — can be ignored, does not affect anything |
-| `Failed to determine HTTPS port` | Remove `app.UseHttpsRedirection()` from `Program.cs` |
+| `Unable to create DbContext` | Check connection string in `appsettings.json` matches your SQL Server |
+| Ollama connection error | Run `ollama serve` in a separate terminal and verify port 11434 is open |
+| Model not found error | Run `ollama pull mxbai-embed-large` and `ollama pull llama3.2:3b` |
+| `Database already exists` during migration | Run `dotnet ef database drop --force` then `dotnet ef database update` |
+| Slow embedding generation | Reduce chunk size in `EmbeddingService.cs` or switch to faster model |
+| Out of memory errors | Reduce `llama3.2:3b` to `llama2:7b-chat` (smaller model) in `appsettings.json` |
+| Upload fails with `413 Payload Too Large` | Increase `MaxRequestBodySize` in `Program.cs` |
+| `wwwroot not found` warning | Normal in Blazor projects — can be safely ignored |
+
+---
+
+## Environment Configuration
+
+You can override settings via environment variables:
+
+```bash
+# Linux/Mac
+export ConnectionStrings__DefaultConnection="Server=...";
+export Ollama__BaseUrl="http://localhost:11434";
+export Ollama__ChatModel="llama3.2:3b";
+export Ollama__EmbedModel="mxbai-embed-large:latest";
+
+# Windows PowerShell
+$env:ConnectionStrings__DefaultConnection = "Server=..."
+$env:Ollama__BaseUrl = "http://localhost:11434"
+```
+
+Configuration priority:
+1. Environment variables (highest)
+2. `appsettings.{Environment}.json`
+3. `appsettings.json` (default)
+
+---
+
+## Development Tips
+
+### Change the LLM Model
+Edit `appsettings.json`:
+```json
+"Ollama": {
+  "ChatModel": "llama2:13b-chat"  // Larger, better quality
+  "EmbedModel": "mxbai-embed-large:latest"
+}
+```
+
+Available models: `ollama list` or visit [ollama.com/library](https://ollama.com/library)
+
+### Hot Reload During Development
+Run with `dotnet watch`:
+```bash
+cd ChatBot.Server
+dotnet watch run
+```
+
+### Debug SignalR Communication
+Add logging to `Program.cs`:
+```csharp
+builder.Services.AddSignalR()
+    .AddHubOptions<ChatHub>(options =>
+    {
+        options.EnableDetailedErrors = true;
+    });
+```
+
+### Test API Endpoints
+Use Swagger UI: `http://localhost:5087/swagger`
+
+---
+
+## Performance Tuning
+
+| Setting | Impact |
+|---|---|
+| **Chunk Size** (in `EmbeddingService.cs`) | Smaller = more precise retrieval, slower embedding |
+| **Vector Search Threshold** | Higher = fewer results, more relevant |
+| **SignalR MessagePack** | Add `AddMessagePackProtocol()` for compression |
+| **Ollama Model Size** | Larger models = better answers, slower generation |
+| **Database Indexes** | Add indexes on `DocumentId` and embeddings for faster search |
+
+---
+
+## Architecture Notes
+
+- **Blazor WASM** handles UI rendering in browser (no server-side rendering)
+- **SignalR** maintains persistent WebSocket connection for streaming responses
+- **Cosine Similarity** used for vector search: `1 - (A·B / ‖A‖‖B‖)`
+- **Chunk Overlap** prevents context loss at boundaries
+- **Entity Framework** handles all database operations (migrations included)
+
+---
+
+## Common Use Cases
+
+- 📚 **Knowledge Base Chatbot** — Upload company docs, answer employee questions
+- 📖 **Research Assistant** — Index papers, get summaries with source citations
+- 🏥 **Medical Documentation** — Query patient records with privacy (local Ollama)
+- ⚖️ **Legal Document Search** — Find relevant clauses across contracts
+- 🎓 **Educational Tool** — Personalized tutoring with textbook references
+
+---
+
+## Contributing
+
+Feel free to submit issues and enhancement requests!
+
+### Local Development Workflow
+1. Create a feature branch: `git checkout -b feature/your-feature`
+2. Make changes and test thoroughly
+3. Submit a pull request with description
+
+---
+
+## License
+
+This project is licensed under the MIT License — see the LICENSE file for details.
+
+---
+
+## Support
+
+For issues, questions, or suggestions, please open an issue on this repository.
+
+**Happy chatting!** 🚀

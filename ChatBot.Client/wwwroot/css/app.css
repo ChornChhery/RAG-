@@ -6,8 +6,8 @@
 }
 
 html, body {
-    background-color: #f7f7f8 !important;
-    color: #1a1a2e !important;
+    background-color: #f0f2ff !important;
+    color: #1e1b4b !important;
     min-height: 100vh;
     font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
     font-size: 15px;
@@ -16,32 +16,32 @@ html, body {
 }
 
 #app {
-    background-color: #f7f7f8;
+    background-color: #f0f2ff;
     min-height: 100vh;
 }
 
 /* ── Scrollbars ───────────────────────────────────────────────────────────── */
 * {
     scrollbar-width: thin;
-    scrollbar-color: #d1d5db transparent;
+    scrollbar-color: #c7d2fe transparent;
 }
 *::-webkit-scrollbar       { width: 5px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+*::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 10px; }
 
 /* ── Bootstrap Overrides ──────────────────────────────────────────────────── */
 h1:focus { outline: none; }
-a, .btn-link { color: #7c3aed; }
+a, .btn-link { color: #6366f1; }
 
 .btn-primary {
     color: #fff;
-    background-color: #7c3aed;
-    border-color: #7c3aed;
+    background-color: #6366f1;
+    border-color: #6366f1;
 }
 
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus,
 .form-control:focus, .form-check-input:focus {
-    box-shadow: 0 0 0 3px rgba(124,58,237,0.15);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.18);
 }
 
 .content { padding-top: 1.1rem; }
@@ -87,13 +87,13 @@ a, .btn-link { color: #7c3aed; }
 }
 .loading-progress circle {
     fill: none;
-    stroke: #e5e7eb;
+    stroke: #e0e7ff;
     stroke-width: 0.6rem;
     transform-origin: 50% 50%;
     transform: rotate(-90deg);
 }
 .loading-progress circle:last-child {
-    stroke: #7c3aed;
+    stroke: #6366f1;
     stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
     transition: stroke-dasharray 0.05s ease-in-out;
 }
@@ -102,13 +102,13 @@ a, .btn-link { color: #7c3aed; }
     text-align: center;
     font-weight: bold;
     inset: calc(20vh + 3.25rem) 0 auto 0.2rem;
-    color: #6b7280;
+    color: #6366f1;
 }
 .loading-progress-text:after {
     content: var(--blazor-load-percentage-text, "Loading");
 }
 
-code { color: #7c3aed; }
+code { color: #6366f1; }
 
 /* ── Material Symbols ─────────────────────────────────────────────────────── */
 .material-symbols-rounded {
