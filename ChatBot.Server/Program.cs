@@ -1,34 +1,85 @@
+using ChatBot.Server.Data;
+using ChatBot.Server.Hubs;
+using ChatBot.Server.Services;
+using ChatBot.Share.Constants;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using OllamaSharp;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// ── Database ───────────────────────────────────────────────────────────────
+builder.Services.AddDbContext<ChatbotDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// ── Ollama / AI ────────────────────────────────────────────────────────────
+var ollamaEndpoint = new Uri(
+    builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434");
+
+// Chat model (qwen3 or llama3.2:3b)
+var chatModelName = builder.Configuration["Ollama:ChatModel"] ?? "qwen3:latest";
+
+// Embedding model
+var embedModelName = builder.Configuration["Ollama:EmbedModel"] ?? "nomic-embed-text:latest";
+
+builder.Services.AddSingleton<IChatClient>(_ =>
+    new OllamaApiClient(ollamaEndpoint, chatModelName));
+
+builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ =>
+    new OllamaApiClient(ollamaEndpoint, embedModelName));
+
+// ── Application Services ───────────────────────────────────────────────────
+builder.Services.AddScoped<EmbeddingService>();
+builder.Services.AddScoped<VectorSearchService>();
+builder.Services.AddScoped<DocumentService>();
+builder.Services.AddScoped<RagService>();
+
+// ── SignalR ────────────────────────────────────────────────────────────────
+builder.Services.AddSignalR(options =>
+{
+    options.MaximumReceiveMessageSize = 1024 * 1024; // 1 MB
+});
+
+// ── Controllers + CORS ────────────────────────────────────────────────────
+builder.Services.AddControllers();
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.WithOrigins("https://localhost:7001")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials()); // Required for SignalR
+});
+
+builder.Services.AddEndpointsApiExplorer();
+// builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// ── Migrate DB on startup ──────────────────────────────────────────────────
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ChatbotDbContext>();
+    await db.Database.MigrateAsync();
+}
+
+// ── Middleware ─────────────────────────────────────────────────────────────
+if (app.Environment.IsDevelopment())
+{
+    // app.UseSwagger();
+    // app.UseSwaggerUI();
+    app.UseWebAssemblyDebugging();
+}
 
 app.UseHttpsRedirection();
+app.UseCors();
+app.UseBlazorFrameworkFiles();
+app.UseStaticFiles();
+app.UseRouting();
+app.UseAuthorization();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-});
+app.MapControllers();
+app.MapHub<ChatHub>(HubRoutes.Chat);
+app.MapFallbackToFile("index.html");
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
