@@ -8,8 +8,10 @@ A Retrieval-Augmented Generation (RAG) Chatbot built with .NET 10, Blazor WebAss
 
 - 📄 **Multi-Format Document Support** — Upload PDF, TXT, and Markdown files
 - 💬 **Real-Time Streaming Chat** — Token-by-token responses via SignalR
-- 🔍 **Vector Search** — Semantic document retrieval using embeddings
+- 🔍 **Hybrid Search (Vector + BM25)** — Combines semantic vector search with keyword-based BM25 retrieval for more accurate results
+- 🌍 **Multilingual Support** — English, Thai, and Khmer with language-aware tokenization
 - 🏗️ **Multiple Chunking Strategies** — FixedSize, ContentAware, and Semantic methods
+- ⚡ **Embedding Cache** — In-memory vector cache eliminates repeated DB round trips at query time
 - 📌 **Source Attribution** — View which document chunks were used in responses
 - 🎯 **Local LLM** — No cloud dependency, full privacy with Ollama
 - 🚀 **Full-Stack .NET** — Type-safe end-to-end architecture
@@ -36,49 +38,57 @@ A Retrieval-Augmented Generation (RAG) Chatbot built with .NET 10, Blazor WebAss
 ---
 
 ## Project Structure
+
 ```
 ChatBotRAG/
-├── ChatBot.Share/                   # Shared DTOs, Enums, Constants
+├── ChatBot.Share/                    # Shared DTOs, Enums, Constants
 │   ├── Constants/
-│   │   ├── HubMethods.cs            # SignalR method name constants
-│   │   └── HubRoutes.cs             # SignalR hub URL constant
+│   │   ├── HubMethods.cs             # SignalR method name constants
+│   │   └── HubRoutes.cs              # SignalR hub URL constant
 │   ├── DTOs/
-│   │   ├── ChatMessageDto.cs        # Single chat message model
-│   │   ├── ChatRequest.cs           # User question + history
-│   │   ├── DocumentChunkResult.cs   # Retrieved RAG chunk with score
-│   │   ├── DocumentDto.cs           # Document metadata for UI
-│   │   ├── StreamToken.cs           # Single streamed token
-│   │   └── UploadResponse.cs        # Upload result response
+│   │   ├── ChatMessageDto.cs         # Single chat message model
+│   │   ├── ChatRequest.cs            # User question + history
+│   │   ├── DocumentChunkResult.cs    # Retrieved RAG chunk with score
+│   │   ├── DocumentDto.cs            # Document metadata for UI
+│   │   ├── StreamToken.cs            # Single streamed token
+│   │   └── UploadResponse.cs         # Upload result response
 │   └── Enums/
-│       ├── DocumentStatus.cs        # Uploading/Processing/Ready/Failed
-│       └── MessageRole.cs           # User/Assistant/System
+│       ├── ChunkingStrategy.cs       # FixedSize / ContentAware / Semantic
+│       ├── DocumentStatus.cs         # Uploading/Processing/Ready/Failed
+│       └── MessageRole.cs            # User/Assistant/System
 │
-├── ChatBot.Server/                  # ASP.NET Core Backend
+├── ChatBot.Server/                   # ASP.NET Core Backend
 │   ├── Controllers/
-│   │   └── DocumentController.cs    # Upload, list, delete API
+│   │   └── DocumentsController.cs   # Upload, list, delete, cache-stats API
 │   ├── Data/
-│   │   └── ChatbotDbContext.cs      # EF Core DbContext
+│   │   └── ChatbotDbContext.cs       # EF Core DbContext
 │   ├── Hubs/
-│   │   └── ChatHub.cs               # SignalR streaming hub
+│   │   └── ChatHub.cs                # SignalR streaming hub
 │   ├── Models/
-│   │   ├── Document.cs              # EF Core document entity
-│   │   └── DocumentChunk.cs         # EF Core chunk + vector entity
+│   │   ├── Document.cs               # EF Core document entity
+│   │   └── DocumentChunk.cs          # EF Core chunk + vector entity
 │   ├── Services/
-│   │   ├── DocumentService.cs       # Document CRUD
-│   │   ├── EmbeddingService.cs      # Chunking + Ollama embedding
-│   │   ├── RagService.cs            # RAG pipeline orchestration
-│   │   └── VectorSearchService.cs   # Cosine similarity search
+│   │   ├── BM25Service.cs            # Multilingual BM25 keyword scoring
+│   │   ├── ContentAwareChunkingStrategy.cs  # Sentence/markdown-aware chunking
+│   │   ├── DocumentService.cs        # Document CRUD + cache invalidation
+│   │   ├── EmbeddingCacheService.cs  # In-memory vector cache
+│   │   ├── EmbeddingService.cs       # Chunking + Ollama embedding + cache update
+│   │   ├── FixedSizeChunkingStrategy.cs     # Simple fixed-size chunking
+│   │   ├── HybridSearchService.cs    # Vector + BM25 fusion search
+│   │   ├── IChunkingStrategy.cs      # Chunking interface
+│   │   ├── RagService.cs             # RAG pipeline orchestration
+│   │   └── SemanticChunkingStrategy.cs      # Topic-coherence chunking
 │   ├── Program.cs
 │   └── appsettings.json
 │
-└── ChatBot.Client/                  # Blazor WebAssembly Frontend
+└── ChatBot.Client/                   # Blazor WebAssembly Frontend
     ├── Pages/
-    │   ├── Chat.razor               # Chat conversation UI
-    │   ├── Chat.razor.cs            # SignalR + message state
-    │   ├── Chat.razor.css           # Chat styling
-    │   ├── Rag.razor                # Document upload UI
-    │   ├── Rag.razor.cs             # Upload + delete logic
-    │   └── Rag.razor.css            # RAG page styling
+    │   ├── Chat.razor                # Chat conversation UI
+    │   ├── Chat.razor.cs             # SignalR + message state
+    │   ├── Chat.razor.css            # Chat styling
+    │   ├── Rag.razor                 # Document upload UI
+    │   ├── Rag.razor.cs              # Upload + delete logic
+    │   └── Rag.razor.css             # RAG page styling
     └── Program.cs
 ```
 
@@ -107,15 +117,144 @@ ollama pull llama3.2:3b
 
 **Retrieval-Augmented Generation** combines document retrieval with generative AI:
 
-1. **Upload** → Document is split into chunks (⚙️ Processing state)
-2. **Embed** → Each chunk converted to vector via `mxbai-embed-large` 
-3. **Store** → Vectors saved in SQL Server with chunk text
-4. **Query** → User question embedded and compared (cosine similarity)
-5. **Retrieve** → Top matching chunks retrieved from database
-6. **Generate** → Retrieved chunks sent to `llama3.2:3b` as context
-7. **Stream** → LLM response sent token-by-token to client
+1. **Upload** → Document is split into chunks using selected strategy (⚙️ Processing state)
+2. **Embed** → Each chunk converted to a 1024-dim vector via `mxbai-embed-large`
+3. **Store** → Vectors saved in SQL Server with chunk text and chunking method
+4. **Cache** → Vectors loaded into RAM on first query (stays in memory until restart)
+5. **Query** → User question embedded and hybrid search runs:
+   - **Vector search** — cosine similarity against cached embeddings (70% weight)
+   - **BM25 search** — keyword matching against chunk text (30% weight)
+   - **Fusion** — scores combined into a single ranked list
+6. **Retrieve** → Top-K chunks above similarity threshold returned
+7. **Generate** → Retrieved chunks sent to `llama3.2:3b` as context
+8. **Stream** → LLM response sent token-by-token to client via SignalR
 
-This ensures responses are grounded in your uploaded documents.
+---
+
+## Hybrid Search (Vector + BM25)
+
+The system uses **weighted score fusion** to combine two complementary retrieval methods:
+
+```
+final_score = 0.7 × vector_score + 0.3 × bm25_score
+```
+
+| Method | Strength | Weakness |
+|---|---|---|
+| **Vector Search** | Semantic meaning, paraphrasing, concepts | Exact keywords, names, codes |
+| **BM25** | Exact terms, technical names, IDs | Synonyms, semantic meaning |
+| **Hybrid** | Both strengths combined | — |
+
+### Configuration
+
+Weights are configurable in `appsettings.json`:
+
+```json
+"HybridSearch": {
+  "VectorWeight": 0.7,
+  "MinSimilarityThreshold": 0.3
+}
+```
+
+- `VectorWeight` — share given to vector score (BM25 gets `1 - VectorWeight`)
+- `MinSimilarityThreshold` — chunks below this score are excluded from results
+
+---
+
+## Multilingual Support 🌍
+
+The system supports **English, Thai, and Khmer** across all components:
+
+### BM25 Tokenization
+
+| Language | Method | Reason |
+|---|---|---|
+| **English** | Word tokenization (space split + stop words) | Words are space-separated |
+| **Thai** | Character trigram (n-gram, n=3) | No spaces between words |
+| **Khmer** | Character trigram (n-gram, n=3) | No spaces between words |
+| **Mixed** | Auto-detects script per segment | Handles mixed-language text |
+
+Thai example with n=3 on `"สวัสดีครับ"`:
+```
+→ ["สวั", "วัส", "ัสด", "สดี", "ดีค", "ีคร", "คร", "รับ"]
+```
+
+### Chunking Strategy Language Support
+
+| Strategy | English | Thai | Khmer |
+|---|---|---|---|
+| **FixedSize** | ✅ | ✅ | ✅ |
+| **ContentAware** | ✅ (markdown headings + paragraphs) | ✅ (newline boundaries) | ✅ (។ sentence terminator) |
+| **Semantic** | ✅ (.!? sentence split) | ✅ (ๆ/ฯ markers + newline) | ✅ (។ U+17D4 terminator) |
+
+---
+
+## Embedding Cache ⚡
+
+The in-memory cache eliminates repeated database round trips at query time.
+
+### How It Works
+
+```
+App starts → cache empty
+
+First query:
+  → Load ALL ready chunks from SQL Server
+  → Deserialize EmbeddingJson → float[] for each chunk
+  → Store in ConcurrentDictionary<Guid, CachedChunk> in RAM
+  → Answer query from RAM
+
+Every query after:
+  → Read directly from RAM (no DB, no JSON parsing)
+  → Run vector + BM25 scoring
+  → Return results
+
+Upload new document:
+  → Processing completes → Status = Ready
+  → Add only new chunks to existing cache (no full reload)
+
+Delete document:
+  → Remove only that document's chunks from cache
+  → Rest of cache untouched
+
+App restart:
+  → RAM cleared → cache empty
+  → First query triggers fresh load from DB
+```
+
+### Cache Warm-Up on Startup
+
+To avoid a slow first query, the cache pre-loads on app start:
+
+```csharp
+// Program.cs — runs before app.Run()
+var cache = app.Services.GetRequiredService<EmbeddingCacheService>();
+await cache.WarmUpAsync();
+```
+
+### Memory Estimate
+
+| Chunks | Approximate RAM |
+|---|---|
+| 1,000 | ~4 MB |
+| 10,000 | ~40 MB |
+| 50,000 | ~200 MB |
+
+### Cache Stats Endpoint
+
+Monitor cache state at runtime:
+
+```
+GET /api/documents/cache-stats
+
+Response:
+{
+  "totalChunks": 1240,
+  "totalDocuments": 8,
+  "isLoaded": true,
+  "estimatedMemoryMb": 4.9
+}
+```
 
 ---
 
@@ -124,17 +263,17 @@ This ensures responses are grounded in your uploaded documents.
 Choose the best chunking method for your documents during upload:
 
 | Strategy | How It Works | Best For | Speed |
-|--|--|--|--|
+|---|---|---|---|
 | **FixedSize** (Default) | Splits text into fixed 500-char chunks with 100-char overlap | Quick indexing, simple documents, prototyping | ⚡ Fast |
-| **ContentAware** | Respects sentence boundaries, markdown structure, paragraphs; variable-size chunks (100-1000 chars) | Markdown docs, mixed content, structured text | 🔶 Medium |
-| **Semantic** | Groups sentences by topic coherence, maximizes meaning preservation; word-overlap based similarity | Research papers, long-form content, high accuracy needed | 🟡 Slower |
+| **ContentAware** | Respects sentence boundaries, markdown structure, paragraphs; variable-size chunks (100–1000 chars) | Markdown docs, mixed content, structured text | 🔶 Medium |
+| **Semantic** | Groups sentences by topic coherence using word-overlap similarity; variable-size chunks (150–1200 chars) | Research papers, long-form content, high accuracy needed | 🟡 Slower |
 
 ### How to Select a Chunking Method
 
 1. Go to the RAG page: `http://localhost:5105/rag`
-2. Use the **"Chunking Method"** dropdown before uploading
-3. Select your preferred strategy
-4. Upload your document — it will be chunked accordingly
+2. Select a strategy from the **"Select Chunking Method"** cards
+3. Upload your document — it will be chunked using the selected method
+4. The method used is displayed as a badge in the document table
 
 ### Recommendations
 
@@ -147,12 +286,14 @@ Choose the best chunking method for your documents during upload:
 ## Setup Guide
 
 ### 1. Clone or Download the Project
+
 ```bash
 git clone <your-repo-url>
 cd ChatBotRAG
 ```
 
 ### 2. Install EF Core Tools
+
 ```bash
 dotnet tool install --global dotnet-ef
 ```
@@ -160,13 +301,15 @@ dotnet tool install --global dotnet-ef
 Close and reopen your terminal after this so the PATH refreshes.
 
 ### 3. Restore NuGet Packages
+
 ```bash
 dotnet restore
 ```
 
 ### 4. Configure the Connection String
 
-Open `ChatBot.Server/appsettings.json` and update the connection string to match your SQL Server:
+Open `ChatBot.Server/appsettings.json` and update:
+
 ```json
 {
   "ConnectionStrings": {
@@ -176,6 +319,10 @@ Open `ChatBot.Server/appsettings.json` and update the connection string to match
     "BaseUrl": "http://localhost:11434",
     "ChatModel": "llama3.2:3b",
     "EmbedModel": "mxbai-embed-large:latest"
+  },
+  "HybridSearch": {
+    "VectorWeight": 0.7,
+    "MinSimilarityThreshold": 0.3
   }
 }
 ```
@@ -189,20 +336,21 @@ Common connection string formats:
 | Full SQL Server | `Server=localhost` |
 
 ### 5. Run Database Migrations
+
 ```bash
 cd ChatBot.Server
 dotnet ef database update
 ```
 
-This applies the initial schema and creates the `Documents`, `DocumentChunks`, and related tables.
+This applies all migrations including:
 
-**Note:** If this is your first time running, Entity Framework automatically applies all migrations including:
-- `InitialCreate` — Initial database schema
-- `AddChunkingMethod` — Adds chunking strategy tracking to document chunks
+- `InitialCreate` — Initial database schema (Documents, DocumentChunks tables)
+- `AddChunkingMethod` — Adds `ChunkingMethod` column to DocumentChunks table
 
 ### 6. Start Ollama
 
 Open a separate terminal and run:
+
 ```bash
 ollama serve
 ```
@@ -254,17 +402,18 @@ http://localhost:5105
 ### Upload Documents (RAG Page)
 
 1. Go to `http://localhost:5105/rag`
-2. Drag and drop or click to upload a PDF, TXT, or MD file
-3. Wait for the status to change from ⚙️ Processing to ✅ Ready
-4. The document is now embedded and ready for chat
+2. **Step 1** — Select a chunking strategy (Fixed Size, Content Aware, or Semantic)
+3. **Step 2** — Drag and drop or click to select a PDF, TXT, or MD file
+4. Click **Upload Files** to confirm
+5. Wait for the status badge to change from ⚙️ Processing to ✅ Ready
+6. The document is now embedded, cached, and ready for chat
 
 ### Chat with Documents (Chat Page)
 
 1. Go to `http://localhost:5105/chat`
-2. Select a specific document in the sidebar or leave on All Documents
-3. Type a question and press **Enter** or click **Send**
-4. The answer streams in token by token
-5. Sources used are shown below each assistant response
+2. Type a question and press **Enter** or click **Send**
+3. The answer streams in token by token via SignalR
+4. Sources used are shown below each assistant response
 
 ---
 
@@ -273,8 +422,9 @@ http://localhost:5105
 | Service | URL | Notes |
 |---|---|---|
 | ChatBot.Client | `http://localhost:5105` | Open this in your browser |
-| ChatBot.Server | `http://localhost:5087` | Backend API |
+| ChatBot.Server | `http://localhost:5087` | Backend API only |
 | Swagger UI | `http://localhost:5087/swagger` | API documentation |
+| SignalR Hub | `http://localhost:5087/hubs/chat` | Internal WebSocket |
 | Ollama | `http://localhost:11434` | Local LLM server |
 
 ---
@@ -283,50 +433,47 @@ http://localhost:5105
 
 ### Document Endpoints
 
-**Upload Document**
-```
-POST /api/document
-Content-Type: multipart/form-data
+| Method | Route | Description | Response |
+|---|---|---|---|
+| GET | `/api/documents` | List all documents | `List<DocumentDto>` |
+| GET | `/api/documents/{id}` | Get one document | `DocumentDto` |
+| GET | `/api/documents/cache-stats` | Cache memory stats | `CacheStats` |
+| POST | `/api/documents/upload?strategy=0` | Upload and process a file | `UploadResponse` |
+| DELETE | `/api/documents/{id}` | Delete document and chunks | `204 No Content` |
 
-Body: file (PDF, TXT, or Markdown)
-Response: { documentId: string, fileName: string, status: "Uploading" }
-```
+**Chunking strategy query param values:**
 
-**List Documents**
-```
-GET /api/document
-Response: DocumentDto[]
-```
-
-**Delete Document**
-```
-DELETE /api/document/{id}
-Response: 204 No Content
-```
+| Value | Strategy |
+|---|---|
+| `0` | FixedSize (default) |
+| `1` | ContentAware |
+| `2` | Semantic |
 
 ### SignalR Chat Hub
 
-**Connect to Hub**
+**Connect to Hub:**
 ```
 WebSocket: ws://localhost:5087/hubs/chat
 ```
 
-**Send Message** (Client → Server)
+**Send Message** (Client → Server):
 ```csharp
-await hubConnection.SendAsync("SendMessage", new ChatRequest 
-{ 
-    UserMessage = "Your question", 
-    DocumentId = "doc-id or null for all",
-    ChatHistory = previousMessages
+await hubConnection.InvokeAsync("SendMessage", chatRequest, messageId);
+```
+
+**Receive Token** (Server → Client):
+```csharp
+hubConnection.On<StreamToken>("ReceiveToken", token => {
+    // token.Token — streamed text
+    // token.IsFinal — true when stream complete
+    // token.MessageId — matches the client-generated messageId
 });
 ```
 
-**Receive Token** (Server → Client)
+**Chat Complete** (Server → Client):
 ```csharp
-hubConnection.On<StreamToken>("ReceiveToken", token =>
-{
-    // token.Content contains streamed text
-    // token.IsComplete indicates end of response
+hubConnection.On<List<DocumentChunkResult>>("ChatComplete", sources => {
+    // sources — list of document chunks used as context
 });
 ```
 
@@ -334,99 +481,46 @@ hubConnection.On<StreamToken>("ReceiveToken", token =>
 
 ## Troubleshooting
 
-| Error | Fix |
-|---|---|
-| `ERR_CONNECTION_REFUSED` on port 5087 | Make sure `ChatBot.Server` is running first |
-| `Failed to connect to SignalR hub` | Ensure `Program.cs` client points to `http://localhost:5087` |
-| `dotnet-ef not found` | Run `dotnet tool install --global dotnet-ef` then reopen terminal |
-| `Unable to create DbContext` | Check connection string in `appsettings.json` matches your SQL Server |
-| Ollama connection error | Run `ollama serve` in a separate terminal and verify port 11434 is open |
-| Model not found error | Run `ollama pull mxbai-embed-large` and `ollama pull llama3.2:3b` |
-| `Database already exists` during migration | Run `dotnet ef database drop --force` then `dotnet ef database update` |
-| Slow embedding generation | Reduce chunk size in `EmbeddingService.cs` or switch to faster model |
-| Out of memory errors | Reduce `llama3.2:3b` to `llama2:7b-chat` (smaller model) in `appsettings.json` |
-| Upload fails with `413 Payload Too Large` | Increase `MaxRequestBodySize` in `Program.cs` |
-| `wwwroot not found` warning | Normal in Blazor projects — can be safely ignored |
-
----
-
-## Environment Configuration
-
-You can override settings via environment variables:
-
-```bash
-# Linux/Mac
-export ConnectionStrings__DefaultConnection="Server=...";
-export Ollama__BaseUrl="http://localhost:11434";
-export Ollama__ChatModel="llama3.2:3b";
-export Ollama__EmbedModel="mxbai-embed-large:latest";
-
-# Windows PowerShell
-$env:ConnectionStrings__DefaultConnection = "Server=..."
-$env:Ollama__BaseUrl = "http://localhost:11434"
-```
-
-Configuration priority:
-1. Environment variables (highest)
-2. `appsettings.{Environment}.json`
-3. `appsettings.json` (default)
-
----
-
-## Development Tips
-
-### Change the LLM Model
-Edit `appsettings.json`:
-```json
-"Ollama": {
-  "ChatModel": "llama2:13b-chat"  // Larger, better quality
-  "EmbedModel": "mxbai-embed-large:latest"
-}
-```
-
-Available models: `ollama list` or visit [ollama.com/library](https://ollama.com/library)
-
-### Hot Reload During Development
-Run with `dotnet watch`:
-```bash
-cd ChatBot.Server
-dotnet watch run
-```
-
-### Debug SignalR Communication
-Add logging to `Program.cs`:
-```csharp
-builder.Services.AddSignalR()
-    .AddHubOptions<ChatHub>(options =>
-    {
-        options.EnableDetailedErrors = true;
-    });
-```
-
-### Test API Endpoints
-Use Swagger UI: `http://localhost:5087/swagger`
+| Error | Root Cause | Fix |
+|---|---|---|
+| `ERR_CONNECTION_REFUSED` on 5087 | Server not running | Start `ChatBot.Server` first |
+| `Failed to connect to SignalR hub` | Wrong port in client | Ensure `Chat.razor.cs` uses port 5087 |
+| `dotnet-ef not found` | EF tools not installed | `dotnet tool install --global dotnet-ef` then reopen terminal |
+| `Unable to create DbContext` | Class name mismatch | Check `AddDbContext<ChatbotDbContext>` matches class name |
+| Ollama connection error | Ollama not running | Run `ollama serve` in a separate terminal |
+| Model not found error | Model not pulled | Run `ollama pull mxbai-embed-large` and `ollama pull llama3.2:3b` |
+| Document stuck at Processing | Ollama not running at upload time | Check server logs, ensure `ollama serve` is running |
+| Cache shows 0 chunks after upload | Document not yet Ready | Wait for status = Ready, then ask a question to trigger cache add |
+| BM25 returns 0 scores for Thai/Khmer | Expected — n-gram overlap may be low | Vector search (70%) still works; hybrid score will be non-zero if semantic match exists |
+| Slow first query after restart | Cache cold start | Add `WarmUpAsync()` call in `Program.cs` to pre-load on startup |
+| `413 Payload Too Large` on upload | File exceeds limit | Increase `RequestSizeLimit` in `DocumentsController.cs` |
+| `Database already exists` during migration | Previous DB exists | Run `dotnet ef database drop --force` then `dotnet ef database update` |
 
 ---
 
 ## Performance Tuning
 
-| Setting | Impact |
-|---|---|
-| **Chunk Size** (in `EmbeddingService.cs`) | Smaller = more precise retrieval, slower embedding |
-| **Vector Search Threshold** | Higher = fewer results, more relevant |
-| **SignalR MessagePack** | Add `AddMessagePackProtocol()` for compression |
-| **Ollama Model Size** | Larger models = better answers, slower generation |
-| **Database Indexes** | Add indexes on `DocumentId` and embeddings for faster search |
+| Setting | Location | Impact |
+|---|---|---|
+| `VectorWeight` | `appsettings.json` | Tune vector vs BM25 balance (default 0.7) |
+| `MinSimilarityThreshold` | `appsettings.json` | Higher = fewer but more relevant chunks |
+| `NgramSize` in BM25 | `BM25Service.cs` | Larger n-grams = more specific Thai/Khmer matching |
+| Chunk size | `FixedSizeChunkingStrategy.cs` | Smaller = more precise retrieval, more chunks in cache |
+| `batchSize` in embedding | `EmbeddingService.cs` | Higher batch = faster embedding, more memory |
+| Ollama model | `appsettings.json` | Larger model = better answers, slower generation |
 
 ---
 
 ## Architecture Notes
 
-- **Blazor WASM** handles UI rendering in browser (no server-side rendering)
-- **SignalR** maintains persistent WebSocket connection for streaming responses
-- **Cosine Similarity** used for vector search: `1 - (A·B / ‖A‖‖B‖)`
-- **Chunk Overlap** prevents context loss at boundaries
-- **Entity Framework** handles all database operations (migrations included)
+- **Blazor WASM** handles all UI rendering in the browser
+- **SignalR** maintains a persistent WebSocket for token-by-token streaming
+- **Hybrid Search** runs entirely in RAM after first cache load — no DB at query time
+- **EmbeddingCacheService** is registered as `Singleton` — it holds shared RAM state across all requests
+- **EmbeddingService** is registered as `Singleton` — it manages its own `DbContext` scope for background processing
+- **Partial cache updates** — upload adds only new chunks, delete removes only that document's chunks
+- **Cosine similarity formula:** `similarity = dot(a,b) / (‖a‖ × ‖b‖)` — result in [-1, 1], higher = more similar
+- **BM25 formula:** `score = IDF × (tf × (k1+1)) / (tf + k1 × (1 - b + b × docLen/avgDocLen))`
 
 ---
 
@@ -434,9 +528,10 @@ Use Swagger UI: `http://localhost:5087/swagger`
 
 - 📚 **Knowledge Base Chatbot** — Upload company docs, answer employee questions
 - 📖 **Research Assistant** — Index papers, get summaries with source citations
-- 🏥 **Medical Documentation** — Query patient records with privacy (local Ollama)
+- 🏥 **Medical Documentation** — Query patient records with full privacy (local Ollama)
 - ⚖️ **Legal Document Search** — Find relevant clauses across contracts
 - 🎓 **Educational Tool** — Personalized tutoring with textbook references
+- 🌏 **Multilingual RAG** — Upload Thai, Khmer, or English documents and query in any language
 
 ---
 
@@ -445,6 +540,7 @@ Use Swagger UI: `http://localhost:5087/swagger`
 Feel free to submit issues and enhancement requests!
 
 ### Local Development Workflow
+
 1. Create a feature branch: `git checkout -b feature/your-feature`
 2. Make changes and test thoroughly
 3. Submit a pull request with description
