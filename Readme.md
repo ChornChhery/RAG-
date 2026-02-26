@@ -12,6 +12,7 @@ A Retrieval-Augmented Generation (RAG) Chatbot built with .NET 10, Blazor WebAss
 - 🌍 **Multilingual Support** — English, Thai, and Khmer with language-aware tokenization
 - 🏗️ **Multiple Chunking Strategies** — FixedSize, ContentAware, and Semantic methods
 - ⚡ **Embedding Cache** — In-memory vector cache eliminates repeated DB round trips at query time
+- 🧪 **RAG Evaluation** — Automatically scores answer quality using BLEU, GLEU, F1, and LLM Judge
 - 📌 **Source Attribution** — View which document chunks were used in responses
 - 🎯 **Local LLM** — No cloud dependency, full privacy with Ollama
 - 🚀 **Full-Stack .NET** — Type-safe end-to-end architecture
@@ -41,54 +42,65 @@ A Retrieval-Augmented Generation (RAG) Chatbot built with .NET 10, Blazor WebAss
 
 ```
 ChatBotRAG/
-├── ChatBot.Share/                    # Shared DTOs, Enums, Constants
+├── ChatBot.Share/                        # Shared DTOs, Enums, Constants
 │   ├── Constants/
-│   │   ├── HubMethods.cs             # SignalR method name constants
-│   │   └── HubRoutes.cs              # SignalR hub URL constant
+│   │   ├── HubMethods.cs                 # SignalR method name constants
+│   │   └── HubRoutes.cs                  # SignalR hub URL constant
 │   ├── DTOs/
-│   │   ├── ChatMessageDto.cs         # Single chat message model
-│   │   ├── ChatRequest.cs            # User question + history
-│   │   ├── DocumentChunkResult.cs    # Retrieved RAG chunk with score
-│   │   ├── DocumentDto.cs            # Document metadata for UI
-│   │   ├── StreamToken.cs            # Single streamed token
-│   │   └── UploadResponse.cs         # Upload result response
+│   │   ├── ChatMessageDto.cs             # Single chat message model
+│   │   ├── ChatRequest.cs                # User question + history
+│   │   ├── DocumentChunkResult.cs        # Retrieved RAG chunk with score
+│   │   ├── DocumentDto.cs                # Document metadata for UI
+│   │   ├── EvaluationRequest.cs          # Evaluation question + document selection
+│   │   ├── EvaluationResult.cs           # All 4 scores + generated answers
+│   │   ├── StreamToken.cs                # Single streamed token
+│   │   └── UploadResponse.cs             # Upload result response
 │   └── Enums/
-│       ├── ChunkingStrategy.cs       # FixedSize / ContentAware / Semantic
-│       ├── DocumentStatus.cs         # Uploading/Processing/Ready/Failed
-│       └── MessageRole.cs            # User/Assistant/System
+│       ├── ChunkingStrategy.cs           # FixedSize / ContentAware / Semantic
+│       ├── DocumentStatus.cs             # Uploading / Processing / Ready / Failed
+│       └── MessageRole.cs                # User / Assistant / System
 │
-├── ChatBot.Server/                   # ASP.NET Core Backend
+├── ChatBot.Server/                       # ASP.NET Core Backend
 │   ├── Controllers/
-│   │   └── DocumentsController.cs   # Upload, list, delete, cache-stats API
+│   │   ├── DocumentsController.cs        # Upload, list, delete, cache-stats API
+│   │   └── EvaluationController.cs       # POST /api/evaluation endpoint
 │   ├── Data/
-│   │   └── ChatbotDbContext.cs       # EF Core DbContext
+│   │   └── ChatbotDbContext.cs           # EF Core DbContext
+│   ├── Evaluators/                       # NLP utility classes (pure math, no DI deps)
+│   │   ├── BLEUEvaluator.cs             # N-gram precision scoring
+│   │   ├── GLEUEvaluator.cs             # Balanced precision + recall scoring
+│   │   └── F1Evaluator.cs               # Token overlap F1 scoring
 │   ├── Hubs/
-│   │   └── ChatHub.cs                # SignalR streaming hub
+│   │   └── ChatHub.cs                    # SignalR streaming hub
 │   ├── Models/
-│   │   ├── Document.cs               # EF Core document entity
-│   │   └── DocumentChunk.cs          # EF Core chunk + vector entity
+│   │   ├── Document.cs                   # EF Core document entity
+│   │   └── DocumentChunk.cs              # EF Core chunk + vector entity
 │   ├── Services/
-│   │   ├── BM25Service.cs            # Multilingual BM25 keyword scoring
+│   │   ├── BM25Service.cs                # Multilingual BM25 keyword scoring
 │   │   ├── ContentAwareChunkingStrategy.cs  # Sentence/markdown-aware chunking
-│   │   ├── DocumentService.cs        # Document CRUD + cache invalidation
-│   │   ├── EmbeddingCacheService.cs  # In-memory vector cache
-│   │   ├── EmbeddingService.cs       # Chunking + Ollama embedding + cache update
-│   │   ├── FixedSizeChunkingStrategy.cs     # Simple fixed-size chunking
-│   │   ├── HybridSearchService.cs    # Vector + BM25 fusion search
-│   │   ├── IChunkingStrategy.cs      # Chunking interface
-│   │   ├── RagService.cs             # RAG pipeline orchestration
-│   │   └── SemanticChunkingStrategy.cs      # Topic-coherence chunking
+│   │   ├── DocumentService.cs            # Document CRUD + cache invalidation
+│   │   ├── EmbeddingCacheService.cs      # In-memory vector cache (Singleton)
+│   │   ├── EmbeddingService.cs           # Chunking + Ollama embedding + cache update
+│   │   ├── EvaluationService.cs          # Full evaluation pipeline orchestration
+│   │   ├── FixedSizeChunkingStrategy.cs  # Simple fixed-size chunking
+│   │   ├── HybridSearchService.cs        # Vector + BM25 fusion search
+│   │   ├── IChunkingStrategy.cs          # Chunking strategy interface
+│   │   ├── RagService.cs                 # RAG pipeline orchestration
+│   │   └── SemanticChunkingStrategy.cs   # Topic-coherence chunking
 │   ├── Program.cs
 │   └── appsettings.json
 │
-└── ChatBot.Client/                   # Blazor WebAssembly Frontend
+└── ChatBot.Client/                       # Blazor WebAssembly Frontend
     ├── Pages/
-    │   ├── Chat.razor                # Chat conversation UI
-    │   ├── Chat.razor.cs             # SignalR + message state
-    │   ├── Chat.razor.css            # Chat styling
-    │   ├── Rag.razor                 # Document upload UI
-    │   ├── Rag.razor.cs              # Upload + delete logic
-    │   └── Rag.razor.css             # RAG page styling
+    │   ├── Chat.razor                    # Chat conversation UI
+    │   ├── Chat.razor.cs                 # SignalR + message state
+    │   ├── Chat.razor.css                # Chat styling
+    │   ├── Evaluation.razor              # RAG evaluation UI
+    │   ├── Evaluation.razor.cs           # Evaluation state + API calls
+    │   ├── Evaluation.razor.css          # Evaluation styling
+    │   ├── Rag.razor                     # Document upload UI
+    │   ├── Rag.razor.cs                  # Upload + delete logic
+    │   └── Rag.razor.css                 # RAG page styling
     └── Program.cs
 ```
 
@@ -117,7 +129,7 @@ ollama pull llama3.2:3b
 
 **Retrieval-Augmented Generation** combines document retrieval with generative AI:
 
-1. **Upload** → Document is split into chunks using selected strategy (⚙️ Processing state)
+1. **Upload** → Document is split into chunks using the selected strategy (⚙️ Processing state)
 2. **Embed** → Each chunk converted to a 1024-dim vector via `mxbai-embed-large`
 3. **Store** → Vectors saved in SQL Server with chunk text and chunking method
 4. **Cache** → Vectors loaded into RAM on first query (stays in memory until restart)
@@ -187,6 +199,17 @@ Thai example with n=3 on `"สวัสดีครับ"`:
 | **ContentAware** | ✅ (markdown headings + paragraphs) | ✅ (newline boundaries) | ✅ (។ sentence terminator) |
 | **Semantic** | ✅ (.!? sentence split) | ✅ (ๆ/ฯ markers + newline) | ✅ (។ U+17D4 terminator) |
 
+### Evaluation Multilingual Support
+
+| Metric | English | Thai | Khmer |
+|---|---|---|---|
+| **BLEU** | ✅ Accurate | ⚠️ Approximate (trigrams) | ⚠️ Approximate (trigrams) |
+| **GLEU** | ✅ Accurate | ⚠️ Approximate (trigrams) | ⚠️ Approximate (trigrams) |
+| **F1** | ✅ Accurate | ⚠️ Approximate (trigrams) | ⚠️ Approximate (trigrams) |
+| **LLM Judge** | ✅ Accurate | ✅ Accurate | ✅ Accurate |
+
+For Thai and Khmer documents, always trust the **LLM Judge** score most — it understands all languages natively.
+
 ---
 
 ## Embedding Cache ⚡
@@ -211,7 +234,7 @@ Every query after:
 
 Upload new document:
   → Processing completes → Status = Ready
-  → Add only new chunks to existing cache (no full reload)
+  → Add only new document's chunks to existing cache (no full reload)
 
 Delete document:
   → Remove only that document's chunks from cache
@@ -268,18 +291,77 @@ Choose the best chunking method for your documents during upload:
 | **ContentAware** | Respects sentence boundaries, markdown structure, paragraphs; variable-size chunks (100–1000 chars) | Markdown docs, mixed content, structured text | 🔶 Medium |
 | **Semantic** | Groups sentences by topic coherence using word-overlap similarity; variable-size chunks (150–1200 chars) | Research papers, long-form content, high accuracy needed | 🟡 Slower |
 
-### How to Select a Chunking Method
-
-1. Go to the RAG page: `http://localhost:5105/rag`
-2. Select a strategy from the **"Select Chunking Method"** cards
-3. Upload your document — it will be chunked using the selected method
-4. The method used is displayed as a badge in the document table
-
 ### Recommendations
 
 - **Start with FixedSize** if unsure — it's fast and works for most use cases
 - **Use ContentAware** for markdown/structured documents (README.md, wikis, formatted guides)
 - **Use Semantic** for dense content where context is critical (academic papers, technical manuals)
+
+---
+
+## RAG Evaluation 🧪
+
+The Evaluation page lets you test how well your RAG pipeline answers questions from your uploaded documents. No reference answer needed — the system generates one automatically.
+
+### How It Works
+
+```
+You type a question only
+
+Step 1 → Hybrid search retrieves relevant chunks from selected document
+Step 2 → LLM generates an ideal reference answer from those chunks
+Step 3 → LLM generates the actual RAG answer (normal pipeline)
+Step 4 → BLEU, GLEU, F1 compare RAG answer vs LLM-generated reference
+Step 5 → LLM Judge independently scores semantic quality
+Step 6 → All 4 scores + both answers displayed in UI
+```
+
+### NLP Evaluation Metrics
+
+| Metric | What It Measures | Best For |
+|---|---|---|
+| **BLEU** | N-gram precision — how many generated phrases match the reference | Checking factual phrase accuracy |
+| **GLEU** | Balanced precision + recall — penalizes both wrong additions and missing content | Short answers, sentence-level QA |
+| **F1** | Token overlap — balances precision and recall at token level | Standard QA metric (SQuAD benchmark) |
+| **LLM Judge** | Semantic quality scored by the LLM itself (0–10 normalized to 0–1) | Multilingual, meaning-based evaluation |
+
+### Score Interpretation
+
+| Score | Label | Meaning |
+|---|---|---|
+| > 0.7 | ✅ Excellent | RAG is retrieving and answering correctly |
+| 0.4–0.7 | 🔵 Good | Mostly correct, minor differences in phrasing |
+| 0.2–0.4 | ⚠️ Fair | Partial match — check chunking strategy or threshold |
+| < 0.2 | ❌ Poor | RAG is not finding the right content — re-upload or re-chunk |
+
+### Practical Workflow
+
+```
+1. Upload a document on the RAG page
+2. Go to the Evaluation page
+3. Select the document you want to test
+4. Ask a question answerable from that document
+5. Check all 4 scores + LLM judge explanation
+6. If scores are low:
+   → Try a different chunking strategy (re-upload)
+   → Lower MinSimilarityThreshold in appsettings.json
+   → Try a larger Ollama model
+7. Re-test until scores are consistently high
+```
+
+### Evaluator Architecture
+
+The three NLP evaluators live in `ChatBot.Server/Evaluators/` — separate from `Services/` because they are pure utility classes with no DI dependencies:
+
+```
+ChatBot.Server/
+  Evaluators/              ← pure math utility classes
+    BLEUEvaluator.cs
+    GLEUEvaluator.cs
+    F1Evaluator.cs
+  Services/
+    EvaluationService.cs   ← real service (has DI dependencies)
+```
 
 ---
 
@@ -415,6 +497,15 @@ http://localhost:5105
 3. The answer streams in token by token via SignalR
 4. Sources used are shown below each assistant response
 
+### Evaluate RAG Quality (Evaluation Page)
+
+1. Go to `http://localhost:5105/evaluation`
+2. Select a document to test (only Ready documents are shown)
+3. Type a question you know is answerable from that document
+4. Click **Run Evaluation**
+5. Wait for all 5 steps to complete (search → reference → answer → NLP scores → LLM judge)
+6. Review all 4 scores and the side-by-side answer comparison
+
 ---
 
 ## Port Reference
@@ -448,6 +539,37 @@ http://localhost:5105
 | `0` | FixedSize (default) |
 | `1` | ContentAware |
 | `2` | Semantic |
+
+### Evaluation Endpoint
+
+| Method | Route | Description | Response |
+|---|---|---|---|
+| POST | `/api/evaluation` | Run full evaluation pipeline | `EvaluationResult` |
+
+**Request body:**
+```json
+{
+  "question": "What is the main topic of this document?",
+  "documentId": "optional-guid-or-null-for-all",
+  "topK": 5
+}
+```
+
+**Response:**
+```json
+{
+  "question": "...",
+  "autoGeneratedReference": "Ideal answer from chunks...",
+  "generatedAnswer": "Actual RAG answer...",
+  "sourceDocuments": ["doc1.pdf"],
+  "bleuScore": 0.72,
+  "gleuScore": 0.68,
+  "f1Score": 0.81,
+  "llmJudgeScore": 0.90,
+  "llmJudgeExplanation": "The answer correctly covers...",
+  "overallScore": 0.78
+}
+```
 
 ### SignalR Chat Hub
 
@@ -491,8 +613,11 @@ hubConnection.On<List<DocumentChunkResult>>("ChatComplete", sources => {
 | Model not found error | Model not pulled | Run `ollama pull mxbai-embed-large` and `ollama pull llama3.2:3b` |
 | Document stuck at Processing | Ollama not running at upload time | Check server logs, ensure `ollama serve` is running |
 | Cache shows 0 chunks after upload | Document not yet Ready | Wait for status = Ready, then ask a question to trigger cache add |
-| BM25 returns 0 scores for Thai/Khmer | Expected — n-gram overlap may be low | Vector search (70%) still works; hybrid score will be non-zero if semantic match exists |
 | Slow first query after restart | Cache cold start | Add `WarmUpAsync()` call in `Program.cs` to pre-load on startup |
+| BM25 returns 0 for Thai/Khmer | Expected — n-gram overlap may be low | Vector search (70%) still works; rely on LLM Judge for multilingual scoring |
+| Evaluation stuck at "Generating..." | LLM taking long or timed out | Wait — evaluation makes 3 LLM calls; larger models take longer |
+| Evaluation scores all 0 | No chunks found | Ensure selected document status is Ready and has content |
+| BLEU/GLEU/F1 low for Thai/Khmer | Trigram approximation limitation | Trust LLM Judge score instead — it understands Thai/Khmer natively |
 | `413 Payload Too Large` on upload | File exceeds limit | Increase `RequestSizeLimit` in `DocumentsController.cs` |
 | `Database already exists` during migration | Previous DB exists | Run `dotnet ef database drop --force` then `dotnet ef database update` |
 
@@ -507,7 +632,8 @@ hubConnection.On<List<DocumentChunkResult>>("ChatComplete", sources => {
 | `NgramSize` in BM25 | `BM25Service.cs` | Larger n-grams = more specific Thai/Khmer matching |
 | Chunk size | `FixedSizeChunkingStrategy.cs` | Smaller = more precise retrieval, more chunks in cache |
 | `batchSize` in embedding | `EmbeddingService.cs` | Higher batch = faster embedding, more memory |
-| Ollama model | `appsettings.json` | Larger model = better answers, slower generation |
+| `TopK` in evaluation | `EvaluationRequest` | Higher = more context for reference generation, slower |
+| Ollama model | `appsettings.json` | Larger model = better answers and evaluation, slower |
 
 ---
 
@@ -519,7 +645,9 @@ hubConnection.On<List<DocumentChunkResult>>("ChatComplete", sources => {
 - **EmbeddingCacheService** is registered as `Singleton` — it holds shared RAM state across all requests
 - **EmbeddingService** is registered as `Singleton` — it manages its own `DbContext` scope for background processing
 - **Partial cache updates** — upload adds only new chunks, delete removes only that document's chunks
-- **Cosine similarity formula:** `similarity = dot(a,b) / (‖a‖ × ‖b‖)` — result in [-1, 1], higher = more similar
+- **Evaluators vs Services** — `BLEUEvaluator`, `GLEUEvaluator`, `F1Evaluator` are pure utility classes with no DI dependencies kept in `Evaluators/`; `EvaluationService` is a real service with DI and lives in `Services/`
+- **Evaluation makes 3 LLM calls** — reference generation, RAG answer generation, LLM judge scoring
+- **Cosine similarity:** `similarity = dot(a,b) / (‖a‖ × ‖b‖)` — result in [-1, 1], higher = more similar
 - **BM25 formula:** `score = IDF × (tf × (k1+1)) / (tf + k1 × (1 - b + b × docLen/avgDocLen))`
 
 ---
@@ -532,6 +660,7 @@ hubConnection.On<List<DocumentChunkResult>>("ChatComplete", sources => {
 - ⚖️ **Legal Document Search** — Find relevant clauses across contracts
 - 🎓 **Educational Tool** — Personalized tutoring with textbook references
 - 🌏 **Multilingual RAG** — Upload Thai, Khmer, or English documents and query in any language
+- 🔬 **RAG Quality Testing** — Use the Evaluation page to benchmark chunking strategies and model quality
 
 ---
 
