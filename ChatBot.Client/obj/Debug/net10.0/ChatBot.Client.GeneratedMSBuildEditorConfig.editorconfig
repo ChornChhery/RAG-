@@ -64,6 +64,10 @@ build_metadata.AdditionalFiles.CssScope = b-hcm32kcd4o
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ2hhdC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = b-umbufaisxs
 
+[D:/Jame/ChatbotRag/ChatBot.Client/Pages/Evaluation.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRXZhbHVhdGlvbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = b-s5baz1dj74
+
 [D:/Jame/ChatbotRag/ChatBot.Client/Pages/Rag.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUmFnLnJhem9y
 build_metadata.AdditionalFiles.CssScope = b-jwsdo6xomk

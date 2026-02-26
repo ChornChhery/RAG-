@@ -33,6 +33,12 @@ builder.Services.AddScoped<RagService>();
 builder.Services.AddScoped<BM25Service>();
 builder.Services.AddScoped<HybridSearchService>();
 builder.Services.AddSingleton<EmbeddingCacheService>();
+builder.Services.AddScoped<EvaluationService>();
+
+// Evaluator utility classes (pure math — no DI dependencies)
+builder.Services.AddScoped<ChatBot.Server.Evaluators.BLEUEvaluator>();
+builder.Services.AddScoped<ChatBot.Server.Evaluators.GLEUEvaluator>();
+builder.Services.AddScoped<ChatBot.Server.Evaluators.F1Evaluator>();
 
 // ── SignalR ────────────────────────────────────────────────────────────────
 builder.Services.AddSignalR(options =>

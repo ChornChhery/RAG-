@@ -7,7 +7,10 @@
 
     <header class="rag-header">
         <div>
-            <h1><span class="material-symbols-rounded">description</span> Document Management</h1>
+            <h1>
+                <span class="material-symbols-rounded">folder_open</span>
+                Document Management
+            </h1>
             <p>Upload documents to build the knowledge base. Once processed, they are available in the Chat page.</p>
         </div>
         <a href="/chat" class="btn-go-chat">
@@ -17,37 +20,92 @@
 
     <!-- ── Upload Zone ── -->
     <section class="upload-section">
+
         <!-- Step 1: Chunking Strategy Selection -->
         <div class="step-block">
-            <div class="step-number">1</div>
+            <div class="step-number">
+                <span class="material-symbols-rounded">looks_one</span>
+            </div>
             <div class="step-content">
-                <h3 class="step-title">Select Chunking Method</h3>
+                <h3 class="step-title">
+                    <span class="material-symbols-rounded">auto_fix_high</span>
+                    Select Chunking Method
+                </h3>
                 <p class="step-description">Choose how to split your document into chunks for better retrieval:</p>
-                <select @bind="_selectedChunkingStrategy" class="strategy-dropdown">
-                    <option value="0">📦 Fixed Size — Fast, simple (default)</option>
-                    <option value="1">📄 Content Aware — Respects sentences & markdown</option>
-                    <option value="2">🧠 Semantic — Preserves meaning & context</option>
-                </select>
+                <div class="strategy-options">
+                    <label class="strategy-card @(_selectedChunkingStrategy == 0 ? "selected" : "")">
+                        <input type="radio" name="strategy" value="0"
+                               @onchange="() => _selectedChunkingStrategy = 0" />
+                        <span class="material-symbols-rounded strategy-icon">view_module</span>
+                        <div class="strategy-info">
+                            <span class="strategy-name">Fixed Size</span>
+                            <span class="strategy-desc">Fast, simple · 500 char chunks</span>
+                        </div>
+                        @if (_selectedChunkingStrategy == 0)
+                        {
+                            <span class="material-symbols-rounded check-icon">check_circle</span>
+                        }
+                    </label>
+
+                    <label class="strategy-card @(_selectedChunkingStrategy == 1 ? "selected" : "")">
+                        <input type="radio" name="strategy" value="1"
+                               @onchange="() => _selectedChunkingStrategy = 1" />
+                        <span class="material-symbols-rounded strategy-icon">article</span>
+                        <div class="strategy-info">
+                            <span class="strategy-name">Content Aware</span>
+                            <span class="strategy-desc">Respects sentences &amp; markdown</span>
+                        </div>
+                        @if (_selectedChunkingStrategy == 1)
+                        {
+                            <span class="material-symbols-rounded check-icon">check_circle</span>
+                        }
+                    </label>
+
+                    <label class="strategy-card @(_selectedChunkingStrategy == 2 ? "selected" : "")">
+                        <input type="radio" name="strategy" value="2"
+                               @onchange="() => _selectedChunkingStrategy = 2" />
+                        <span class="material-symbols-rounded strategy-icon">psychology</span>
+                        <div class="strategy-info">
+                            <span class="strategy-name">Semantic</span>
+                            <span class="strategy-desc">Preserves meaning &amp; context</span>
+                        </div>
+                        @if (_selectedChunkingStrategy == 2)
+                        {
+                            <span class="material-symbols-rounded check-icon">check_circle</span>
+                        }
+                    </label>
+                </div>
             </div>
         </div>
 
         <!-- Step 2: Upload Files -->
         <div class="step-block">
-            <div class="step-number">2</div>
+            <div class="step-number">
+                <span class="material-symbols-rounded">looks_two</span>
+            </div>
             <div class="step-content">
-                <h3 class="step-title">Upload Documents</h3>
+                <h3 class="step-title">
+                    <span class="material-symbols-rounded">cloud_upload</span>
+                    Upload Documents
+                </h3>
                 <p class="step-description">Drop your PDF, TXT, or Markdown files here:</p>
+
                 <label class="upload-zone @(_isUploading ? "uploading" : "")">
                     @if (_isUploading)
                     {
                         <div class="upload-spinner"></div>
-                        <span>Uploading...</span>
+                        <span class="upload-status-text">Uploading...</span>
                     }
                     else
                     {
-                        <span class="material-symbols-rounded upload-icon">upload</span>
+                        <span class="material-symbols-rounded upload-icon">upload_file</span>
                         <span class="upload-label">Drop files here or <strong>click to browse</strong></span>
-                        <span class="upload-hint">Supported: PDF, TXT, MD — Max 50 MB each</span>
+                        <span class="upload-hint">
+                            <span class="material-symbols-rounded hint-icon">picture_as_pdf</span> PDF ·
+                            <span class="material-symbols-rounded hint-icon">text_snippet</span> TXT ·
+                            <span class="material-symbols-rounded hint-icon">description</span> MD
+                            · Max 50 MB
+                        </span>
                     }
                     <InputFile OnChange="OnFilesSelected"
                                multiple
@@ -61,8 +119,8 @@
                 {
                     <div class="pending-files-preview">
                         <div class="preview-header">
-                            <span class="material-symbols-rounded preview-icon">check_circle</span>
-                            <span><strong>@_pendingFiles.Count file(s) ready to upload:</strong></span>
+                            <span class="material-symbols-rounded preview-icon">task_alt</span>
+                            <span><strong>@_pendingFiles.Count file(s) ready to upload</strong></span>
                         </div>
                         <ul class="files-list">
                             @foreach (var file in _pendingFiles)
@@ -72,19 +130,22 @@
                                         @(file.ContentType.Contains("pdf") ? "picture_as_pdf" : "description")
                                     </span>
                                     <span class="file-name">@file.Name</span>
-                                    <span class="file-size">@(file.Size / 1024.0 / 1024.0 < 1 ? $"{file.Size / 1024.0:F1} KB" : $"{file.Size / 1024.0 / 1024.0:F1} MB")</span>
+                                    <span class="file-size">
+                                        @(file.Size / 1024.0 / 1024.0 < 1
+                                            ? $"{file.Size / 1024.0:F1} KB"
+                                            : $"{file.Size / 1024.0 / 1024.0:F1} MB")
+                                    </span>
                                 </li>
                             }
                         </ul>
 
-                        <!-- Upload & Cancel Buttons -->
                         <div class="action-buttons">
                             <button class="btn-upload" @onclick="UploadConfirmedAsync" disabled="@_isUploading">
                                 <span class="material-symbols-rounded">cloud_upload</span>
                                 Upload Files
                             </button>
                             <button class="btn-cancel" @onclick="CancelUpload" disabled="@_isUploading">
-                                <span class="material-symbols-rounded">close</span>
+                                <span class="material-symbols-rounded">cancel</span>
                                 Cancel
                             </button>
                         </div>
@@ -96,6 +157,9 @@
         @if (_uploadMessage is not null)
         {
             <div class="alert @(_uploadSuccess ? "alert-success" : "alert-error")">
+                <span class="material-symbols-rounded">
+                    @(_uploadSuccess ? "check_circle" : "error")
+                </span>
                 @_uploadMessage
             </div>
         }
@@ -103,8 +167,11 @@
         @if (_errorMessage is not null)
         {
             <div class="alert alert-error">
-                <span class="material-symbols-rounded">warning</span> @_errorMessage
-                <button @onclick="() => _errorMessage = null">✕</button>
+                <span class="material-symbols-rounded">warning</span>
+                @_errorMessage
+                <button @onclick="() => _errorMessage = null">
+                    <span class="material-symbols-rounded">close</span>
+                </button>
             </div>
         }
     </section>
@@ -112,7 +179,10 @@
     <!-- ── Document List ── -->
     <section class="doc-list-section">
         <div class="doc-list-header">
-            <h2>Uploaded Documents (@_documents.Count)</h2>
+            <h2>
+                <span class="material-symbols-rounded">library_books</span>
+                Uploaded Documents (@_documents.Count)
+            </h2>
             <button class="btn-refresh" @onclick="RefreshStatusAsync" disabled="@_isLoading">
                 @if (_isLoading)
                 {
@@ -122,12 +192,16 @@
                 {
                     <span class="material-symbols-rounded">refresh</span>
                 }
+                Refresh
             </button>
         </div>
 
         @if (_isLoading && _documents.Count == 0)
         {
-            <div class="loading-state">Loading documents...</div>
+            <div class="loading-state">
+                <span class="material-symbols-rounded loading-icon">hourglass_top</span>
+                Loading documents...
+            </div>
         }
         else if (_documents.Count == 0)
         {
@@ -142,13 +216,34 @@
                 <table class="doc-table">
                     <thead>
                         <tr>
-                            <th>File Name</th>
-                            <th>Size</th>
-                            <th>Chunks</th>
-                            <th>Method</th>
-                            <th>Uploaded</th>
-                            <th>Status</th>
-                            <th>Action</th>
+                            <th>
+                                <span class="material-symbols-rounded th-icon">insert_drive_file</span>
+                                File Name
+                            </th>
+                            <th>
+                                <span class="material-symbols-rounded th-icon">data_usage</span>
+                                Size
+                            </th>
+                            <th>
+                                <span class="material-symbols-rounded th-icon">segment</span>
+                                Chunks
+                            </th>
+                            <th>
+                                <span class="material-symbols-rounded th-icon">auto_fix_high</span>
+                                Method
+                            </th>
+                            <th>
+                                <span class="material-symbols-rounded th-icon">schedule</span>
+                                Uploaded
+                            </th>
+                            <th>
+                                <span class="material-symbols-rounded th-icon">info</span>
+                                Status
+                            </th>
+                            <th>
+                                <span class="material-symbols-rounded th-icon">settings</span>
+                                Action
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -156,32 +251,47 @@
                         {
                             <tr>
                                 <td class="doc-name">
-                                    <span class="doc-icon material-symbols-rounded">
+                                    <span class="material-symbols-rounded doc-icon">
                                         @(doc.ContentType.Contains("pdf") ? "picture_as_pdf" : "article")
                                     </span>
                                     @doc.FileName
                                 </td>
                                 <td>@doc.FileSizeDisplay</td>
-                                <td>@doc.ChunkCount</td>
+                                <td>
+                                    <span class="chunk-count">
+                                        <span class="material-symbols-rounded">segment</span>
+                                        @doc.ChunkCount
+                                    </span>
+                                </td>
                                 <td>
                                     <span class="method-badge @GetMethodClass(doc.ChunkingMethod)">
+                                        <span class="material-symbols-rounded method-icon">
+                                            @GetMethodIcon(doc.ChunkingMethod)
+                                        </span>
                                         @GetMethodDisplay(doc.ChunkingMethod)
                                     </span>
                                 </td>
                                 <td>@doc.UploadedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
                                 <td>
                                     <span class="status-badge @GetStatusClass(doc.Status)">
+                                        <span class="material-symbols-rounded status-icon">
+                                            @GetStatusIcon(doc.Status)
+                                        </span>
                                         @doc.StatusDisplay
                                     </span>
                                     @if (doc.Status == DocumentStatus.Failed && doc.ErrorMessage is not null)
                                     {
-                                        <span class="material-symbols-rounded error-hint" title="@doc.ErrorMessage">info</span>
+                                        <span class="material-symbols-rounded error-hint"
+                                              title="@doc.ErrorMessage">
+                                            info
+                                        </span>
                                     }
                                 </td>
                                 <td>
                                     <button class="btn-delete"
                                             @onclick="() => DeleteDocumentAsync(doc.Id, doc.FileName)">
-                                        <span class="material-symbols-rounded">delete</span> Delete
+                                        <span class="material-symbols-rounded">delete_forever</span>
+                                        Delete
                                     </button>
                                 </td>
                             </tr>

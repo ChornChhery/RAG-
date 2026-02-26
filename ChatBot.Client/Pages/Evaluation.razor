@@ -1,0 +1,312 @@
+@page "/evaluation"
+@using ChatBot.Share.DTOs
+@using ChatBot.Share.Enums
+
+<PageTitle>Evaluation — RAG Chatbot</PageTitle>
+
+<div class="eval-page">
+
+    <header class="eval-header">
+        <div class="eval-header-text">
+            <h1>
+                <span class="material-symbols-rounded">science</span>
+                RAG Evaluation
+            </h1>
+            <p>Select a document, type a question, and the system will automatically generate a reference answer from your document chunks — then score the RAG output using BLEU, GLEU, F1, and LLM Judge.</p>
+        </div>
+        <div class="header-nav">
+            <a href="/rag" class="btn-nav">
+                <span class="material-symbols-rounded">folder_open</span>
+                Documents
+            </a>
+            <a href="/chat" class="btn-nav">
+                <span class="material-symbols-rounded">chat</span>
+                Chat
+            </a>
+        </div>
+    </header>
+
+    <!-- ── Input Form ── -->
+    <section class="eval-form-section">
+
+        <!-- Document Selector -->
+        <div class="form-block">
+            <label class="form-label">
+                <span class="material-symbols-rounded">description</span>
+                Select Document to Test
+            </label>
+            <div class="doc-selector">
+                <label class="doc-option @(_selectedDocumentId == null ? "selected" : "")">
+                    <input type="radio" name="doc" @onchange="() => _selectedDocumentId = null" />
+                    <span class="material-symbols-rounded doc-opt-icon">library_books</span>
+                    <span class="doc-opt-text">All Documents</span>
+                    @if (_selectedDocumentId == null)
+                    {
+                        <span class="material-symbols-rounded sel-check">check_circle</span>
+                    }
+                </label>
+                @foreach (var doc in _documents)
+                {
+                    var docId = doc.Id;
+                    <label class="doc-option @(_selectedDocumentId == docId ? "selected" : "")">
+                        <input type="radio" name="doc" @onchange="() => _selectedDocumentId = docId" />
+                        <span class="material-symbols-rounded doc-opt-icon">
+                            @(doc.ContentType.Contains("pdf") ? "picture_as_pdf" : "article")
+                        </span>
+                        <span class="doc-opt-text">@doc.FileName</span>
+                        @if (_selectedDocumentId == docId)
+                        {
+                            <span class="material-symbols-rounded sel-check">check_circle</span>
+                        }
+                    </label>
+                }
+            </div>
+            @if (_documents.Count == 0 && !_loadingDocs)
+            {
+                <div class="no-docs-hint">
+                    <span class="material-symbols-rounded">info</span>
+                    No ready documents found. Upload documents in the
+                    <a href="/rag">Documents</a> page first.
+                </div>
+            }
+        </div>
+
+        <!-- Question -->
+        <div class="form-block">
+            <label class="form-label">
+                <span class="material-symbols-rounded">help</span>
+                Test Question
+                <span class="label-hint">— ask something answerable from your document</span>
+            </label>
+            <textarea class="form-textarea"
+                      placeholder="e.g. What is the main topic of this document?"
+                      @bind="_question"
+                      @bind:event="oninput"
+                      rows="3"
+                      disabled="@_isRunning" />
+        </div>
+
+        <!-- Auto-reference notice -->
+        <div class="auto-ref-notice">
+            <span class="material-symbols-rounded">auto_awesome</span>
+            <div>
+                <strong>No reference answer needed.</strong>
+                The system automatically generates an ideal reference answer from your document chunks,
+                then scores the RAG output against it.
+            </div>
+        </div>
+
+        <!-- Run Button -->
+        <button class="btn-run" @onclick="RunEvaluationAsync" disabled="@(!CanRun)">
+            @if (_isRunning)
+            {
+                <span class="run-spinner"></span>
+                <span>@_runningStep</span>
+            }
+            else
+            {
+                <span class="material-symbols-rounded">play_circle</span>
+                <span>Run Evaluation</span>
+            }
+        </button>
+
+        @if (_errorMessage is not null)
+        {
+            <div class="eval-alert alert-error">
+                <span class="material-symbols-rounded">error</span>
+                <span>@_errorMessage</span>
+                <button @onclick="() => _errorMessage = null">
+                    <span class="material-symbols-rounded">close</span>
+                </button>
+            </div>
+        }
+    </section>
+
+    <!-- ── Results ── -->
+    @if (_result is not null)
+    {
+        <section class="eval-results">
+
+            <div class="scores-header">
+                <span class="material-symbols-rounded">analytics</span>
+                Evaluation Scores
+            </div>
+
+            <!-- Score Cards Grid -->
+            <div class="score-cards">
+
+                <!-- BLEU -->
+                <div class="score-card">
+                    <div class="score-card-top">
+                        <div class="score-icon-wrap bleu-color">
+                            <span class="material-symbols-rounded">compare_arrows</span>
+                        </div>
+                        <div class="score-meta">
+                            <span class="score-name">BLEU</span>
+                            <span class="score-full-name">Bilingual Evaluation Understudy</span>
+                        </div>
+                        <span class="score-value @GetScoreClass(_result.BleuScore)">
+                            @(_result.BleuScore.ToString("P0"))
+                        </span>
+                    </div>
+                    <div class="score-bar-track">
+                        <div class="score-bar-fill bleu-bar" style="width:@(_result.BleuScore * 100)%"></div>
+                    </div>
+                    <p class="score-desc">
+                        <span class="material-symbols-rounded info-icon">info</span>
+                        Measures how many <strong>word sequences (n-grams)</strong> from the generated answer appear in the reference. Focuses on <strong>precision</strong> — did the answer use the right phrases? Best for checking factual phrase accuracy.
+                    </p>
+                    <div class="score-verdict @GetScoreClass(_result.BleuScore)">
+                        <span class="material-symbols-rounded">@GetScoreIcon(_result.BleuScore)</span>
+                        @GetScoreLabel(_result.BleuScore)
+                    </div>
+                </div>
+
+                <!-- GLEU -->
+                <div class="score-card">
+                    <div class="score-card-top">
+                        <div class="score-icon-wrap gleu-color">
+                            <span class="material-symbols-rounded">balance</span>
+                        </div>
+                        <div class="score-meta">
+                            <span class="score-name">GLEU</span>
+                            <span class="score-full-name">Google-BLEU</span>
+                        </div>
+                        <span class="score-value @GetScoreClass(_result.GleuScore)">
+                            @(_result.GleuScore.ToString("P0"))
+                        </span>
+                    </div>
+                    <div class="score-bar-track">
+                        <div class="score-bar-fill gleu-bar" style="width:@(_result.GleuScore * 100)%"></div>
+                    </div>
+                    <p class="score-desc">
+                        <span class="material-symbols-rounded info-icon">info</span>
+                        A smoother BLEU that penalizes <strong>both</strong> wrong additions and missing content. More balanced — ideal for <strong>short answers</strong>. Better than BLEU when completeness matters as much as precision.
+                    </p>
+                    <div class="score-verdict @GetScoreClass(_result.GleuScore)">
+                        <span class="material-symbols-rounded">@GetScoreIcon(_result.GleuScore)</span>
+                        @GetScoreLabel(_result.GleuScore)
+                    </div>
+                </div>
+
+                <!-- F1 -->
+                <div class="score-card">
+                    <div class="score-card-top">
+                        <div class="score-icon-wrap f1-color">
+                            <span class="material-symbols-rounded">join_inner</span>
+                        </div>
+                        <div class="score-meta">
+                            <span class="score-name">F1</span>
+                            <span class="score-full-name">Token-Level F1 Score</span>
+                        </div>
+                        <span class="score-value @GetScoreClass(_result.F1Score)">
+                            @(_result.F1Score.ToString("P0"))
+                        </span>
+                    </div>
+                    <div class="score-bar-track">
+                        <div class="score-bar-fill f1-bar" style="width:@(_result.F1Score * 100)%"></div>
+                    </div>
+                    <p class="score-desc">
+                        <span class="material-symbols-rounded info-icon">info</span>
+                        Balances <strong>Precision</strong> (no wrong tokens) and <strong>Recall</strong> (no missing tokens). The standard QA metric used in the SQuAD benchmark. Most reliable for measuring whether the right <strong>facts</strong> appear, regardless of phrasing.
+                    </p>
+                    <div class="score-verdict @GetScoreClass(_result.F1Score)">
+                        <span class="material-symbols-rounded">@GetScoreIcon(_result.F1Score)</span>
+                        @GetScoreLabel(_result.F1Score)
+                    </div>
+                </div>
+
+                <!-- LLM Judge -->
+                <div class="score-card judge-card">
+                    <div class="score-card-top">
+                        <div class="score-icon-wrap judge-color">
+                            <span class="material-symbols-rounded">psychology</span>
+                        </div>
+                        <div class="score-meta">
+                            <span class="score-name">LLM Judge</span>
+                            <span class="score-full-name">Semantic AI Evaluation</span>
+                        </div>
+                        <span class="score-value @GetScoreClass(_result.LlmJudgeScore)">
+                            @(_result.LlmJudgeScore.ToString("P0"))
+                        </span>
+                    </div>
+                    <div class="score-bar-track">
+                        <div class="score-bar-fill judge-bar" style="width:@(_result.LlmJudgeScore * 100)%"></div>
+                    </div>
+                    <p class="score-desc">
+                        <span class="material-symbols-rounded info-icon">info</span>
+                        The LLM scores the answer based on <strong>meaning and semantics</strong> — not word overlap. Works accurately for <strong>English, Thai, and Khmer</strong>. Trust this score most for multilingual evaluation where BLEU/GLEU/F1 use approximations.
+                    </p>
+                    @if (!string.IsNullOrWhiteSpace(_result.LlmJudgeExplanation))
+                    {
+                        <div class="judge-explanation">
+                            <span class="material-symbols-rounded">chat_bubble</span>
+                            @_result.LlmJudgeExplanation
+                        </div>
+                    }
+                    <div class="score-verdict @GetScoreClass(_result.LlmJudgeScore)">
+                        <span class="material-symbols-rounded">@GetScoreIcon(_result.LlmJudgeScore)</span>
+                        @GetScoreLabel(_result.LlmJudgeScore)
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Overall Score -->
+            <div class="overall-score-block @GetScoreClass(_result.OverallScore)">
+                <span class="material-symbols-rounded overall-icon">stars</span>
+                <div class="overall-info">
+                    <span class="overall-label">Overall Score</span>
+                    <span class="overall-hint">Average of BLEU + GLEU + F1 + LLM Judge</span>
+                </div>
+                <span class="overall-value">@(_result.OverallScore.ToString("P0"))</span>
+            </div>
+
+            <!-- Multilingual note -->
+            <div class="multilingual-notice">
+                <span class="material-symbols-rounded">language</span>
+                <span>
+                    <strong>Multilingual note:</strong> For Thai and Khmer, BLEU/GLEU/F1 use character trigrams (approximate).
+                    The <strong>LLM Judge</strong> understands Thai and Khmer natively — trust it most for non-English documents.
+                </span>
+            </div>
+
+            <!-- Answer Comparison -->
+            <div class="section-label">
+                <span class="material-symbols-rounded">compare</span>
+                Answer Comparison
+            </div>
+
+            <div class="answer-comparison">
+
+                <div class="answer-block reference-block">
+                    <div class="answer-block-header">
+                        <span class="material-symbols-rounded">auto_awesome</span>
+                        Auto-Generated Reference
+                        <span class="answer-tag ref-tag">Ideal Answer from Chunks</span>
+                    </div>
+                    <div class="answer-text">@_result.AutoGeneratedReference</div>
+                </div>
+
+                <div class="answer-block generated-block">
+                    <div class="answer-block-header">
+                        <span class="material-symbols-rounded">smart_toy</span>
+                        RAG Answer
+                        <span class="answer-tag gen-tag">Generated Output</span>
+                        @if (_result.SourceDocuments.Count > 0)
+                        {
+                            <span class="source-tag">
+                                <span class="material-symbols-rounded">menu_book</span>
+                                @string.Join(", ", _result.SourceDocuments)
+                            </span>
+                        }
+                    </div>
+                    <div class="answer-text">@_result.GeneratedAnswer</div>
+                </div>
+
+            </div>
+
+        </section>
+    }
+
+</div>

@@ -14,7 +14,7 @@
                 RAG Chat
             </span>
         </div>
-        <div class="chat-nav-right">
+<div class="chat-nav-right">
             <div class="connection-pill @(GetConnectionStatus().ToLower().Replace(" ", "-"))">
                 <span class="dot"></span>
                 @GetConnectionStatus()
@@ -22,6 +22,10 @@
             <a href="/rag" class="btn-nav">
                 <span class="material-symbols-rounded">folder_open</span>
                 Documents
+            </a>
+            <a href="/evaluation" class="btn-nav">
+                <span class="material-symbols-rounded">science</span>
+                Evaluation
             </a>
         </div>
     </header>
