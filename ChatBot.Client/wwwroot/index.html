@@ -30,6 +30,30 @@
         <span class="dismiss">🗙</span>
     </div>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script>
+    window.chatHelpers = {
+        autoResize: function (id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.height = '0px';
+            const maxHeight = 200;
+            const newHeight = Math.min(el.scrollHeight, maxHeight);
+            el.style.height = newHeight + 'px';
+            el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+        },
+        resetHeight: function (id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.height = '';
+            el.style.overflowY = 'hidden';
+        },
+        scrollToBottom: function (id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.scrollTop = el.scrollHeight;
+        }
+    };
+</script>
 </body>
 
 </html>
