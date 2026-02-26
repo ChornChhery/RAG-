@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ChatBot.Share")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4914d62f79d8fe06161d112487a135cfc0a0f015")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b2713476b086c9962d94034c6830bb8ae4d3bf56")]
 [assembly: System.Reflection.AssemblyProductAttribute("ChatBot.Share")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ChatBot.Share")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
