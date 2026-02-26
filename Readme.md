@@ -164,7 +164,7 @@ Weights are configurable in `appsettings.json`:
 ```json
 "HybridSearch": {
   "VectorWeight": 0.7,
-  "MinSimilarityThreshold": 0.3
+  "MinSimilarityThreshold": 0.6
 }
 ```
 
