@@ -404,7 +404,7 @@ Open `ChatBot.Server/appsettings.json` and update:
   },
   "HybridSearch": {
     "VectorWeight": 0.7,
-    "MinSimilarityThreshold": 0.3
+    "MinSimilarityThreshold": 0.60
   }
 }
 ```
