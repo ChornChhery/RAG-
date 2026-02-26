@@ -46,7 +46,7 @@ public class RagService(
         // ── Step 2: Build system prompt ────────────────────────────────────
         string systemPrompt;
 
-        if (chunks.Count > 0)
+        if (chunks.Count > 0 && chunks[0].SimilarityScore >= 0.60)
         {
             var context = string.Join("\n\n---\n\n",
                 chunks.Select((c, i) =>

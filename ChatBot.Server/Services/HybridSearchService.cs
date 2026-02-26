@@ -17,7 +17,7 @@ public class HybridSearchService(
 {
     private double VectorWeight => configuration.GetValue<double>("HybridSearch:VectorWeight", 0.7);
     private double Bm25Weight   => 1.0 - VectorWeight;
-    private double MinThreshold => configuration.GetValue<double>("HybridSearch:MinSimilarityThreshold", 0.3);
+    private double MinThreshold => configuration.GetValue<double>("HybridSearch:MinSimilarityThreshold", 0.7);
 
     public async Task<List<DocumentChunkResult>> SearchAsync(
         float[] queryEmbedding,
