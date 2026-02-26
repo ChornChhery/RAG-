@@ -1,8 +1,4 @@
-using ChatBot.Server.Data;
 using ChatBot.Share.DTOs;
-using ChatBot.Share.Enums;
-using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace ChatBot.Server.Services;
 
@@ -11,22 +7,16 @@ namespace ChatBot.Server.Services;
 /// Uses weighted score fusion: final = α × vectorScore + (1 - α) × bm25Score
 /// Default: 70% vector + 30% BM25 (configurable via appsettings.json).
 ///
-/// Why hybrid?
-/// - Vector search: great for semantic meaning, paraphrasing, concepts
-/// - BM25: great for exact keywords, names, codes, technical terms
-/// - Together: covers both semantic and lexical retrieval gaps
+/// All chunk data is read from EmbeddingCacheService (RAM) — zero DB calls at query time.
 /// </summary>
 public class HybridSearchService(
-    ChatbotDbContext db,
+    EmbeddingCacheService cache,
     BM25Service bm25Service,
     IConfiguration configuration,
     ILogger<HybridSearchService> logger)
 {
-    // Weight for vector score (BM25 weight = 1 - VectorWeight)
     private double VectorWeight => configuration.GetValue<double>("HybridSearch:VectorWeight", 0.7);
     private double Bm25Weight   => 1.0 - VectorWeight;
-
-    // Minimum final hybrid score to be included in results
     private double MinThreshold => configuration.GetValue<double>("HybridSearch:MinSimilarityThreshold", 0.3);
 
     public async Task<List<DocumentChunkResult>> SearchAsync(
@@ -35,80 +25,56 @@ public class HybridSearchService(
         int topK = 5,
         Guid? documentId = null)
     {
+        var stats = cache.GetStats();
         logger.LogInformation(
-            "Hybrid search — VectorWeight: {V:F2}, BM25Weight: {B:F2}, TopK: {K}",
-            VectorWeight, Bm25Weight, topK);
+            "Hybrid search — cache: {Chunks} chunks / {Docs} docs / {Mb:F1} MB | " +
+            "VectorWeight: {V:F2} BM25Weight: {B:F2}",
+            stats.TotalChunks, stats.TotalDocuments, stats.EstimatedMemoryMb,
+            VectorWeight, Bm25Weight);
 
-        // ── Step 1: Load all Ready chunks from DB ──────────────────────────
-        var dbQuery = db.DocumentChunks
-            .Include(c => c.Document)
-            .AsNoTracking();
+        // ── Step 1: Get all chunks from cache (RAM, no DB) ─────────────────
+        var allChunks = await cache.GetAllChunksAsync();
 
+        // Filter by document if requested
         if (documentId.HasValue)
-            dbQuery = dbQuery.Where(c => c.DocumentId == documentId.Value);
+            allChunks = allChunks.Where(c => c.DocumentId == documentId.Value).ToList();
 
-        var allChunks = await dbQuery
-            .Select(c => new
-            {
-                c.Id,
-                c.DocumentId,
-                c.Document.FileName,
-                c.Document.Status,
-                c.ChunkText,
-                c.PageNumber,
-                c.EmbeddingJson
-            })
-            .ToListAsync();
-
-        // Filter to Ready documents only (in-memory to avoid EF enum/string issues)
-        var readyChunks = allChunks
-            .Where(c => c.Status == DocumentStatus.Ready)
-            .ToList();
-
-        logger.LogInformation(
-            "Loaded {Ready} Ready chunks (total in DB: {Total})",
-            readyChunks.Count, allChunks.Count);
-
-        if (readyChunks.Count == 0)
+        if (allChunks.Count == 0)
         {
-            logger.LogWarning("No Ready chunks found for hybrid search.");
+            logger.LogWarning("Hybrid search: no cached chunks found.");
             return [];
         }
 
-        // ── Step 2: Map to DocumentChunkResult for scoring ─────────────────
-        var chunkResults = readyChunks
-            .Select(c => new DocumentChunkResult
-            {
-                DocumentId      = c.DocumentId,
-                DocumentName    = c.FileName,
-                ChunkText       = c.ChunkText,
-                PageNumber      = c.PageNumber,
-                SimilarityScore = 0
-            })
+        // ── Step 2: Map to DocumentChunkResult for BM25 scoring ───────────
+        var chunkResults = allChunks.Select(c => new DocumentChunkResult
+        {
+            DocumentId      = c.DocumentId,
+            DocumentName    = c.DocumentName,
+            ChunkText       = c.ChunkText,
+            PageNumber      = c.PageNumber,
+            SimilarityScore = 0
+        }).ToList();
+
+        // ── Step 3: Vector scores (cosine similarity, pure math in RAM) ────
+        var vectorScores = allChunks
+            .Select(c => CosineSimilarity(queryEmbedding, c.Embedding))
             .ToList();
 
-        // ── Step 3: Vector scoring ─────────────────────────────────────────
-        var vectorScores = ComputeVectorScores(readyChunks
-            .Select(c => (c.Id, c.EmbeddingJson))
-            .ToList(), queryEmbedding);
+        // Normalize vector scores to [0, 1]
+        var maxVector = vectorScores.Count > 0 ? vectorScores.Max() : 1.0;
+        if (maxVector > 0)
+            vectorScores = vectorScores.Select(s => s / maxVector).ToList();
 
-        // ── Step 4: BM25 scoring ───────────────────────────────────────────
+        // ── Step 4: BM25 scores (keyword matching in RAM) ──────────────────
         var bm25Scored = bm25Service.Score(chunkResults, query);
-        var bm25Dict   = bm25Scored
-            .Select((item, i) => (Index: i, Score: item.Score))
-            .ToDictionary(x => x.Index, x => x.Score);
 
         // ── Step 5: Weighted fusion ────────────────────────────────────────
         var hybridResults = chunkResults
             .Select((chunk, i) =>
             {
                 var vectorScore = vectorScores.ElementAtOrDefault(i);
-                var bm25Score   = bm25Dict.GetValueOrDefault(i, 0.0);
+                var bm25Score   = bm25Scored.ElementAtOrDefault(i).Score;
                 var hybridScore = VectorWeight * vectorScore + Bm25Weight * bm25Score;
-
-                logger.LogDebug(
-                    "Chunk {I}: vector={V:F4}, bm25={B:F4}, hybrid={H:F4} — '{Doc}'",
-                    i, vectorScore, bm25Score, hybridScore, chunk.DocumentName);
 
                 return new DocumentChunkResult
                 {
@@ -125,54 +91,15 @@ public class HybridSearchService(
             .ToList();
 
         logger.LogInformation(
-            "Hybrid search returned {Count} results above threshold {T}",
-            hybridResults.Count, MinThreshold);
-
-        if (hybridResults.Count > 0)
-        {
-            logger.LogInformation(
-                "Top hybrid result: score={S:F4} from '{Doc}'",
-                hybridResults[0].SimilarityScore, hybridResults[0].DocumentName);
-        }
+            "Hybrid search: {Count}/{Total} chunks above threshold {T}. " +
+            "Top score: {Score:F4}",
+            hybridResults.Count, allChunks.Count, MinThreshold,
+            hybridResults.FirstOrDefault()?.SimilarityScore ?? 0);
 
         return hybridResults;
     }
 
-    // ── Vector scoring ─────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Computes normalized cosine similarity scores for all chunks.
-    /// Returns scores in the same order as input chunks.
-    /// </summary>
-    private List<double> ComputeVectorScores(
-        List<(Guid Id, string EmbeddingJson)> chunks,
-        float[] queryEmbedding)
-    {
-        var rawScores = chunks.Select(c =>
-        {
-            float[]? embedding = null;
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(c.EmbeddingJson))
-                    embedding = JsonSerializer.Deserialize<float[]>(c.EmbeddingJson);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning("Failed to deserialize embedding for chunk {Id}: {Err}", c.Id, ex.Message);
-            }
-
-            return embedding is not null && embedding.Length > 0
-                ? CosineSimilarity(queryEmbedding, embedding)
-                : 0.0;
-        }).ToList();
-
-        // Normalize vector scores to [0, 1]
-        var max = rawScores.Count > 0 ? rawScores.Max() : 1.0;
-        if (max == 0) return rawScores;
-
-        return rawScores.Select(s => s / max).ToList();
-    }
-
+    // ── Cosine similarity ──────────────────────────────────────────────────
     private static double CosineSimilarity(float[] a, float[] b)
     {
         if (a.Length != b.Length) return 0;

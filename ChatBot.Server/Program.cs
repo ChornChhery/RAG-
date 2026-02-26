@@ -32,6 +32,7 @@ builder.Services.AddScoped<DocumentService>();
 builder.Services.AddScoped<RagService>();
 builder.Services.AddScoped<BM25Service>();
 builder.Services.AddScoped<HybridSearchService>();
+builder.Services.AddSingleton<EmbeddingCacheService>();
 
 // ── SignalR ────────────────────────────────────────────────────────────────
 builder.Services.AddSignalR(options =>
@@ -75,5 +76,8 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<ChatHub>(HubRoutes.Chat);
+
+var cache = app.Services.GetRequiredService<EmbeddingCacheService>();
+await cache.WarmUpAsync();
 
 app.Run();

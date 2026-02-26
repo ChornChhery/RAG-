@@ -12,12 +12,15 @@ namespace ChatBot.Server.Services;
 public class EmbeddingService(
     IServiceScopeFactory scopeFactory,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+    EmbeddingCacheService cache,
     ILogger<EmbeddingService> logger)
 {
-    // ── Main entry point called after file upload ──────────────────────────
-    public async Task ProcessDocumentAsync(Guid documentId, Stream fileStream, string contentType, ChunkingStrategy strategy = ChunkingStrategy.FixedSize)
+    public async Task ProcessDocumentAsync(
+        Guid documentId,
+        Stream fileStream,
+        string contentType,
+        ChunkingStrategy strategy = ChunkingStrategy.FixedSize)
     {
-        // Use a new scope for background processing (since EmbeddingService is Scoped)
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ChatbotDbContext>();
 
@@ -33,30 +36,30 @@ public class EmbeddingService(
             document.Status = DocumentStatus.Processing;
             await db.SaveChangesAsync();
 
-            logger.LogInformation("Starting processing for document {Id} ({Type})", documentId, contentType);
+            logger.LogInformation(
+                "Starting processing for document {Id} ({Type}) strategy={Strategy}",
+                documentId, contentType, strategy);
 
-            // 1. Extract raw text from the file
+            // 1. Extract raw text
             var pages = ExtractPages(fileStream, contentType);
             logger.LogInformation("Extracted {Count} pages from document {Id}", pages.Count, documentId);
 
             if (pages.Count == 0 || pages.All(p => string.IsNullOrWhiteSpace(p.Text)))
-            {
                 throw new InvalidOperationException("No text could be extracted from the document.");
-            }
 
-            // 2. Chunk text from all pages
+            // 2. Chunk text
             var chunks = new List<DocumentChunk>();
             var chunkingStrategy = GetChunkingStrategy(strategy);
-            
+
             foreach (var (text, pageNumber) in pages)
             {
                 var pageChunks = chunkingStrategy.ChunkText(text, pageNumber);
                 chunks.AddRange(pageChunks.Select(c => new DocumentChunk
                 {
-                    DocumentId = documentId,
-                    ChunkText  = c.Text,
-                    PageNumber = pageNumber,
-                    ChunkIndex = c.Index,
+                    DocumentId     = documentId,
+                    ChunkText      = c.Text,
+                    PageNumber     = pageNumber,
+                    ChunkIndex     = c.Index,
                     ChunkingMethod = strategy.ToString()
                 }));
             }
@@ -67,8 +70,8 @@ public class EmbeddingService(
             const int batchSize = 10;
             for (int i = 0; i < chunks.Count; i += batchSize)
             {
-                var batch = chunks.Skip(i).Take(batchSize).ToList();
-                var texts = batch.Select(c => c.ChunkText).ToList();
+                var batch  = chunks.Skip(i).Take(batchSize).ToList();
+                var texts  = batch.Select(c => c.ChunkText).ToList();
 
                 logger.LogInformation(
                     "Embedding batch {Batch}/{Total} for document {DocId}",
@@ -82,27 +85,25 @@ public class EmbeddingService(
                 {
                     var vector = embeddings[j].Vector.ToArray();
                     batch[j].EmbeddingJson = JsonSerializer.Serialize(vector);
-
-                    logger.LogDebug(
-                        "Chunk {Idx} embedded — vector length: {Len}",
-                        i + j, vector.Length);
                 }
             }
 
-            // 4. Save all chunks to DB
+            // 4. Save to DB
             await db.DocumentChunks.AddRangeAsync(chunks);
             document.Status = DocumentStatus.Ready;
             await db.SaveChangesAsync();
 
             logger.LogInformation(
-                "Document {Id} fully processed: {Count} chunks saved with embeddings",
+                "Document {Id} fully processed: {Count} chunks saved",
                 documentId, chunks.Count);
+
+            // 5. ── Add to cache (partial update — no full reload) ──────────
+            await cache.AddDocumentAsync(documentId);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to process document {Id}", documentId);
 
-            // Re-fetch to avoid stale state
             var doc = await db.Documents.FindAsync(documentId);
             if (doc is not null)
             {
@@ -113,7 +114,7 @@ public class EmbeddingService(
         }
     }
 
-    // ── Embed a single query string for vector search ──────────────────────
+    // ── Embed a single query string ────────────────────────────────────────
     public async Task<float[]> EmbedQueryAsync(string query)
     {
         logger.LogInformation("Embedding query: {Q}", query);
@@ -123,13 +124,13 @@ public class EmbeddingService(
         return vector;
     }
 
-    // ── Text chunking strategy selector ────────────────────────────────────
+    // ── Chunking strategy selector ─────────────────────────────────────────
     private static IChunkingStrategy GetChunkingStrategy(ChunkingStrategy strategy) =>
         strategy switch
         {
             ChunkingStrategy.ContentAware => new ContentAwareChunkingStrategy(),
-            ChunkingStrategy.Semantic => new SemanticChunkingStrategy(),
-            _ => new FixedSizeChunkingStrategy()
+            ChunkingStrategy.Semantic     => new SemanticChunkingStrategy(),
+            _                             => new FixedSizeChunkingStrategy()
         };
 
     // ── Text extraction ────────────────────────────────────────────────────

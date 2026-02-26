@@ -10,6 +10,7 @@ namespace ChatBot.Server.Controllers;
 public class DocumentsController(
     DocumentService documentService,
     EmbeddingService embeddingService,
+    EmbeddingCacheService cache,
     ILogger<DocumentsController> logger) : ControllerBase
 {
     private static readonly string[] AllowedTypes =
@@ -32,10 +33,17 @@ public class DocumentsController(
         return doc is null ? NotFound() : Ok(doc);
     }
 
+    // GET /api/documents/cache-stats
+    [HttpGet("cache-stats")]
+    public ActionResult<CacheStats> GetCacheStats()
+        => Ok(cache.GetStats());
+
     // POST /api/documents/upload
     [HttpPost("upload")]
-    [RequestSizeLimit(50 * 1024 * 1024)] // 50 MB max
-    public async Task<ActionResult<UploadResponse>> Upload(IFormFile file, [FromQuery] ChunkingStrategy strategy = ChunkingStrategy.FixedSize)
+    [RequestSizeLimit(50 * 1024 * 1024)]
+    public async Task<ActionResult<UploadResponse>> Upload(
+        IFormFile file,
+        [FromQuery] ChunkingStrategy strategy = ChunkingStrategy.FixedSize)
     {
         if (file is null || file.Length == 0)
             return BadRequest(UploadResponse.Fail("unknown", "No file provided."));
@@ -46,11 +54,9 @@ public class DocumentsController(
 
         try
         {
-            // 1. Create document record
             var doc = await documentService.CreateAsync(
                 file.FileName, file.ContentType, file.Length);
 
-            // 2. Process embedding in the background (don't await — return immediately)
             var fileBytes = new byte[file.Length];
             using var ms  = new MemoryStream(fileBytes);
             await file.CopyToAsync(ms);
@@ -58,7 +64,8 @@ public class DocumentsController(
             _ = Task.Run(async () =>
             {
                 using var stream = new MemoryStream(fileBytes);
-                await embeddingService.ProcessDocumentAsync(doc.Id, stream, file.ContentType, strategy);
+                await embeddingService.ProcessDocumentAsync(
+                    doc.Id, stream, file.ContentType, strategy);
             });
 
             logger.LogInformation("Upload accepted: {File} ({Id})", file.FileName, doc.Id);

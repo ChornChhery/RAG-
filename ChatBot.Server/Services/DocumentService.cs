@@ -6,7 +6,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ChatBot.Server.Services;
 
-public class DocumentService(ChatbotDbContext db, ILogger<DocumentService> logger)
+public class DocumentService(
+    ChatbotDbContext db,
+    EmbeddingCacheService cache,
+    ILogger<DocumentService> logger)
 {
     public async Task<List<DocumentDto>> GetAllAsync()
     {
@@ -14,15 +17,17 @@ public class DocumentService(ChatbotDbContext db, ILogger<DocumentService> logge
             .OrderByDescending(d => d.UploadedAt)
             .Select(d => new DocumentDto
             {
-                Id              = d.Id,
-                FileName        = d.FileName,
-                ContentType     = d.ContentType,
-                FileSizeBytes   = d.FileSizeBytes,
-                UploadedAt      = d.UploadedAt,
-                Status          = d.Status,
-                ChunkCount      = d.Chunks.Count,
-                ChunkingMethod  = d.Chunks.FirstOrDefault() != null ? d.Chunks.First().ChunkingMethod : "FixedSize",
-                ErrorMessage    = d.ErrorMessage
+                Id             = d.Id,
+                FileName       = d.FileName,
+                ContentType    = d.ContentType,
+                FileSizeBytes  = d.FileSizeBytes,
+                UploadedAt     = d.UploadedAt,
+                Status         = d.Status,
+                ChunkCount     = d.Chunks.Count,
+                ChunkingMethod = d.Chunks.Any()
+                    ? d.Chunks.First().ChunkingMethod
+                    : "FixedSize",
+                ErrorMessage   = d.ErrorMessage
             })
             .ToListAsync();
     }
@@ -37,15 +42,15 @@ public class DocumentService(ChatbotDbContext db, ILogger<DocumentService> logge
 
         return new DocumentDto
         {
-            Id              = d.Id,
-            FileName        = d.FileName,
-            ContentType     = d.ContentType,
-            FileSizeBytes   = d.FileSizeBytes,
-            UploadedAt      = d.UploadedAt,
-            Status          = d.Status,
-            ChunkCount      = d.Chunks.Count,
-            ChunkingMethod  = d.Chunks.FirstOrDefault() != null ? d.Chunks.First().ChunkingMethod : "FixedSize",
-            ErrorMessage    = d.ErrorMessage
+            Id             = d.Id,
+            FileName       = d.FileName,
+            ContentType    = d.ContentType,
+            FileSizeBytes  = d.FileSizeBytes,
+            UploadedAt     = d.UploadedAt,
+            Status         = d.Status,
+            ChunkCount     = d.Chunks.Count,
+            ChunkingMethod = d.Chunks.FirstOrDefault()?.ChunkingMethod ?? "FixedSize",
+            ErrorMessage   = d.ErrorMessage
         };
     }
 
@@ -70,7 +75,11 @@ public class DocumentService(ChatbotDbContext db, ILogger<DocumentService> logge
 
         db.Documents.Remove(doc);
         await db.SaveChangesAsync();
-        logger.LogInformation("Deleted document {Id}", id);
+
+        // ── Remove from cache (partial removal — no full reload) ───────────
+        cache.RemoveDocument(id);
+
+        logger.LogInformation("Deleted document {Id} and removed from cache", id);
         return true;
     }
 }
