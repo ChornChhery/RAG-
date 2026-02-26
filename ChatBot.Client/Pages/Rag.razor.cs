@@ -6,7 +6,7 @@ using System.Net.Http.Json;
 
 namespace ChatBot.Client.Pages;
 
-public partial class Rag : ComponentBase
+public partial class Rag : ComponentBase, IAsyncDisposable
 {
     [Inject] private HttpClient Http { get; set; } = null!;
 
@@ -17,6 +17,12 @@ public partial class Rag : ComponentBase
     private string? _uploadMessage = null;
     private bool _uploadSuccess = false;
     private string? _errorMessage = null;
+    private int _selectedChunkingStrategy = 0; // Default to FixedSize
+
+    // ── Pending Upload State ───────────────────────────────────────────────
+    private List<IBrowserFile> _pendingFiles = [];
+    private bool _hasPendingFiles = false;
+    private CancellationTokenSource? _refreshCts;
 
     private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
     private readonly string[] _allowedExtensions = [".pdf", ".txt", ".md"];
@@ -24,12 +30,43 @@ public partial class Rag : ComponentBase
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
     protected override async Task OnInitializedAsync()
-        => await LoadDocumentsAsync();
+    {
+        await LoadDocumentsAsync();
+        // Start auto-refresh polling
+        _ = StartAutoRefreshAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _refreshCts?.Cancel();
+        _refreshCts?.Dispose();
+    }
+
+    // ── Auto Refresh Polling ───────────────────────────────────────────────
+    private async Task StartAutoRefreshAsync()
+    {
+        _refreshCts = new CancellationTokenSource();
+        try
+        {
+            while (!_refreshCts.Token.IsCancellationRequested)
+            {
+                await Task.Delay(2000, _refreshCts.Token); // Refresh every 2 seconds
+                await LoadDocumentsAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when component is disposed
+        }
+    }
 
     // ── Load Documents ─────────────────────────────────────────────────────
 
     private async Task LoadDocumentsAsync()
     {
+        if (_isLoading) return; // Don't stack requests
+        
         _isLoading = true;
         _errorMessage = null;
 
@@ -47,44 +84,68 @@ public partial class Rag : ComponentBase
         }
     }
 
-    // ── Upload ─────────────────────────────────────────────────────────────
+    // ── File Selection (Before Upload) ─────────────────────────────────────
 
-    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    private Task OnFilesSelected(InputFileChangeEventArgs e)
     {
-        _uploadMessage = null;
-        _errorMessage  = null;
+        _errorMessage = null;
+        _pendingFiles = [];
 
-        var files = e.GetMultipleFiles(10);
-        _isUploading = true;
-        int successCount = 0;
+        var files = e.GetMultipleFiles(10).ToList();
+        if (files.Count == 0)
+        {
+            _hasPendingFiles = false;
+            return Task.CompletedTask;
+        }
 
+        // Validate all files before accepting
         foreach (var file in files)
         {
             var ext = Path.GetExtension(file.Name).ToLowerInvariant();
             if (!_allowedExtensions.Contains(ext))
             {
-                _errorMessage = $"'{file.Name}' is not supported. Allowed: PDF, TXT, MD.";
-                continue;
+                _errorMessage = $"❌ '{file.Name}' is not supported. Allowed: PDF, TXT, MD.";
+                _hasPendingFiles = false;
+                return Task.CompletedTask;
             }
 
             if (file.Size > MaxFileSizeBytes)
             {
-                _errorMessage = $"'{file.Name}' exceeds the 50 MB limit.";
-                continue;
+                _errorMessage = $"❌ '{file.Name}' exceeds the 50 MB limit.";
+                _hasPendingFiles = false;
+                return Task.CompletedTask;
             }
 
+            _pendingFiles.Add(file);
+        }
+
+        _hasPendingFiles = _pendingFiles.Count > 0;
+        return Task.CompletedTask;
+    }
+
+    // ── Upload Confirmation ────────────────────────────────────────────────
+
+    private async Task UploadConfirmedAsync()
+    {
+        _uploadMessage = null;
+        _errorMessage = null;
+        _isUploading = true;
+        int successCount = 0;
+
+        foreach (var file in _pendingFiles)
+        {
             try
             {
-                using var content   = new MultipartFormDataContent();
-                using var stream    = file.OpenReadStream(MaxFileSizeBytes);
-                using var sc        = new StreamContent(stream);
+                using var content = new MultipartFormDataContent();
+                using var stream = file.OpenReadStream(MaxFileSizeBytes);
+                using var sc = new StreamContent(stream);
                 sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
                     file.ContentType ?? "application/octet-stream");
 
                 content.Add(sc, "file", file.Name);
 
-                var response = await Http.PostAsync("api/documents/upload", content);
-                var result   = await response.Content.ReadFromJsonAsync<UploadResponse>();
+                var response = await Http.PostAsync($"api/documents/upload?strategy={_selectedChunkingStrategy}", content);
+                var result = await response.Content.ReadFromJsonAsync<UploadResponse>();
 
                 if (result?.Success == true)
                     successCount++;
@@ -101,8 +162,10 @@ public partial class Rag : ComponentBase
 
         if (successCount > 0)
         {
-            _uploadSuccess  = true;
-            _uploadMessage  = $"{successCount} file(s) uploaded. Embedding in progress...";
+            _uploadSuccess = true;
+            _uploadMessage = $"✅ {successCount} file(s) uploaded. Processing in background...";
+            _pendingFiles = [];
+            _hasPendingFiles = false;
             await LoadDocumentsAsync();
 
             // Auto-clear the success message after 5 seconds
@@ -115,6 +178,15 @@ public partial class Rag : ComponentBase
         }
 
         StateHasChanged();
+    }
+
+    // ── Cancel Upload ──────────────────────────────────────────────────────
+
+    private void CancelUpload()
+    {
+        _pendingFiles = [];
+        _hasPendingFiles = false;
+        _errorMessage = null;
     }
 
     // ── Delete ─────────────────────────────────────────────────────────────
@@ -154,9 +226,25 @@ public partial class Rag : ComponentBase
 
     public string GetStatusClass(DocumentStatus status) => status switch
     {
-        DocumentStatus.Ready      => "status-ready",
+        DocumentStatus.Ready => "status-ready",
         DocumentStatus.Processing => "status-processing",
-        DocumentStatus.Failed     => "status-failed",
-        _                         => "status-uploading"
+        DocumentStatus.Failed => "status-failed",
+        _ => "status-uploading"
+    };
+
+    public string GetMethodDisplay(string method) => method switch
+    {
+        "FixedSize" => "📦 Fixed Size",
+        "ContentAware" => "📄 Content Aware",
+        "Semantic" => "🧠 Semantic",
+        _ => "❓ Unknown"
+    };
+
+    public string GetMethodClass(string method) => method switch
+    {
+        "FixedSize" => "method-fixed",
+        "ContentAware" => "method-aware",
+        "Semantic" => "method-semantic",
+        _ => "method-unknown"
     };
 }

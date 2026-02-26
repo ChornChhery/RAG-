@@ -6,12 +6,12 @@ namespace ChatBot.Server.Services;
 
 public class RagService(
     EmbeddingService embeddingService,
-    VectorSearchService vectorSearch,
+    HybridSearchService hybridSearch,
     IChatClient chatClient,
     ILogger<RagService> logger)
 {
     /// <summary>
-    /// Full RAG pipeline with LLM fallback:
+    /// Full RAG pipeline with Hybrid Search (Vector + BM25) and LLM fallback:
     /// - If relevant chunks found → RAG answer (context + LLM)
     /// - If no chunks found → pure LLM answer
     /// Streams tokens back via the onToken callback.
@@ -23,30 +23,31 @@ public class RagService(
     {
         List<DocumentChunkResult> chunks = [];
 
-        // ── Step 1: Try RAG — embed question and search for relevant chunks ──
+        // ── Step 1: Hybrid search — embed question + BM25 keyword search ───
         try
         {
-            logger.LogInformation("Embedding question for RAG search: {Q}", request.Question);
+            logger.LogInformation("Embedding question for hybrid search: {Q}", request.Question);
             var queryEmbedding = await embeddingService.EmbedQueryAsync(request.Question);
 
-            chunks = await vectorSearch.SearchAsync(
-                queryEmbedding, request.TopK, request.DocumentId);
+            chunks = await hybridSearch.SearchAsync(
+                queryEmbedding,
+                request.Question,   // raw text for BM25
+                request.TopK,
+                request.DocumentId);
 
-            logger.LogInformation("Retrieved {Count} chunks from vector search", chunks.Count);
+            logger.LogInformation("Hybrid search returned {Count} chunks", chunks.Count);
         }
         catch (Exception ex)
         {
-            // If embedding/search fails, log and fall through to pure LLM
-            logger.LogWarning(ex, "RAG search failed — falling back to pure LLM response");
+            logger.LogWarning(ex, "Hybrid search failed — falling back to pure LLM response");
             chunks = [];
         }
 
-        // ── Step 2: Build the system prompt based on whether we have context ──
+        // ── Step 2: Build system prompt ────────────────────────────────────
         string systemPrompt;
 
         if (chunks.Count > 0)
         {
-            // RAG mode — include document context
             var context = string.Join("\n\n---\n\n",
                 chunks.Select((c, i) =>
                     $"[Source {i + 1}: {c.DocumentName}, Page {c.PageNumber}]\n{c.ChunkText}"));
@@ -64,7 +65,6 @@ public class RagService(
         }
         else
         {
-            // Pure LLM mode — no document context available
             systemPrompt = """
                 You are a helpful assistant. Answer the user's question clearly and helpfully 
                 using your general knowledge. No document context is available for this question.
@@ -79,14 +79,12 @@ public class RagService(
             new(ChatRole.System, systemPrompt)
         };
 
-        // Add conversation history (last 10 turns)
         foreach (var h in request.History.TakeLast(10))
         {
             var role = h.Role == MessageRole.User ? ChatRole.User : ChatRole.Assistant;
             messages.Add(new ChatMessage(role, h.Content));
         }
 
-        // Add the current question
         messages.Add(new ChatMessage(ChatRole.User, request.Question));
 
         // ── Step 4: Stream LLM response ────────────────────────────────────

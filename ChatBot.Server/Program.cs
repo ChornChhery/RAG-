@@ -30,6 +30,8 @@ builder.Services.AddScoped<EmbeddingService>();
 builder.Services.AddScoped<VectorSearchService>();
 builder.Services.AddScoped<DocumentService>();
 builder.Services.AddScoped<RagService>();
+builder.Services.AddScoped<BM25Service>();
+builder.Services.AddScoped<HybridSearchService>();
 
 // ── SignalR ────────────────────────────────────────────────────────────────
 builder.Services.AddSignalR(options =>

@@ -14,14 +14,15 @@ public class DocumentService(ChatbotDbContext db, ILogger<DocumentService> logge
             .OrderByDescending(d => d.UploadedAt)
             .Select(d => new DocumentDto
             {
-                Id            = d.Id,
-                FileName      = d.FileName,
-                ContentType   = d.ContentType,
-                FileSizeBytes = d.FileSizeBytes,
-                UploadedAt    = d.UploadedAt,
-                Status        = d.Status,
-                ChunkCount    = d.Chunks.Count,
-                ErrorMessage  = d.ErrorMessage
+                Id              = d.Id,
+                FileName        = d.FileName,
+                ContentType     = d.ContentType,
+                FileSizeBytes   = d.FileSizeBytes,
+                UploadedAt      = d.UploadedAt,
+                Status          = d.Status,
+                ChunkCount      = d.Chunks.Count,
+                ChunkingMethod  = d.Chunks.FirstOrDefault() != null ? d.Chunks.First().ChunkingMethod : "FixedSize",
+                ErrorMessage    = d.ErrorMessage
             })
             .ToListAsync();
     }
@@ -36,14 +37,15 @@ public class DocumentService(ChatbotDbContext db, ILogger<DocumentService> logge
 
         return new DocumentDto
         {
-            Id            = d.Id,
-            FileName      = d.FileName,
-            ContentType   = d.ContentType,
-            FileSizeBytes = d.FileSizeBytes,
-            UploadedAt    = d.UploadedAt,
-            Status        = d.Status,
-            ChunkCount    = d.Chunks.Count,
-            ErrorMessage  = d.ErrorMessage
+            Id              = d.Id,
+            FileName        = d.FileName,
+            ContentType     = d.ContentType,
+            FileSizeBytes   = d.FileSizeBytes,
+            UploadedAt      = d.UploadedAt,
+            Status          = d.Status,
+            ChunkCount      = d.Chunks.Count,
+            ChunkingMethod  = d.Chunks.FirstOrDefault() != null ? d.Chunks.First().ChunkingMethod : "FixedSize",
+            ErrorMessage    = d.ErrorMessage
         };
     }
 

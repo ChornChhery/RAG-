@@ -5,7 +5,7 @@ var e=!1;const t=async()=>WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,
   "mainAssemblyName": "ChatBot.Client",
   "applicationEnvironment": "Development",
   "resources": {
-    "hash": "sha256-amuIaGyVPaGEalhqfGclomKQVQrqFCU5Z028K6ePMyE=",
+    "hash": "sha256-RHrhnxAZi5l9i7nx5uYqHA18yvtAOAljj1vGcM+zPn8=",
     "jsModuleNative": [
       {
         "name": "dotnet.native.69poregybn.js"
@@ -1302,28 +1302,28 @@ var e=!1;const t=async()=>WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,
       },
       {
         "virtualPath": "ChatBot.Share.wasm",
-        "name": "ChatBot.Share.azscot4ezt.wasm",
-        "integrity": "sha256-tokf0FdDSmAx7Jo8hYqnruylJuEuulsyqC1B+zvPqEI=",
+        "name": "ChatBot.Share.d0iaraw1uy.wasm",
+        "integrity": "sha256-U+OT8Pb0eoTpVq3KZb1TYez+UrIAALfcPEGNlwZhFWM=",
         "cache": "force-cache"
       },
       {
         "virtualPath": "ChatBot.Client.wasm",
-        "name": "ChatBot.Client.xj9dveyxjj.wasm",
-        "integrity": "sha256-nUge3xLgV/t7XB6/Yozew4plglnqlAsDDpMvIkHWzAI=",
+        "name": "ChatBot.Client.gvlcfk6yq6.wasm",
+        "integrity": "sha256-ROeQ/nnFGVGv+n7lpeMhdDfvqWQbt/jknWrvJ6xQaTU=",
         "cache": "force-cache"
       }
     ],
     "pdb": [
       {
         "virtualPath": "ChatBot.Share.pdb",
-        "name": "ChatBot.Share.495yi7etf4.pdb",
-        "integrity": "sha256-GD3PcYEHHVgt4VTAr5D9OuGJ/l/8l3sGm4NOg+bXnxE=",
+        "name": "ChatBot.Share.dscecjsgq2.pdb",
+        "integrity": "sha256-w08sLJkVhCWloEnAY2ulgfNblLiW2eUhpawNIU2+4rE=",
         "cache": "force-cache"
       },
       {
         "virtualPath": "ChatBot.Client.pdb",
-        "name": "ChatBot.Client.xlx2imayc5.pdb",
-        "integrity": "sha256-W18LJ2Kp7fC8wotSdcoNeD4qbIVjo//AtckBilOks2U=",
+        "name": "ChatBot.Client.3asku2gvw1.pdb",
+        "integrity": "sha256-K7KT1PNHS4VfZqlCJvf+cws8jt9XuVCGaH11GLPvS+g=",
         "cache": "force-cache"
       }
     ],

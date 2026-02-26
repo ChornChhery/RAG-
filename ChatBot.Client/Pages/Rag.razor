@@ -17,24 +17,81 @@
 
     <!-- ── Upload Zone ── -->
     <section class="upload-section">
-        <label class="upload-zone @(_isUploading ? "uploading" : "")">
-            @if (_isUploading)
-            {
-                <div class="upload-spinner"></div>
-                <span>Uploading...</span>
-            }
-            else
-            {
-                <span class="material-symbols-rounded upload-icon">upload</span>
-                <span class="upload-label">Drop files here or <strong>click to browse</strong></span>
-                <span class="upload-hint">Supported: PDF, TXT, MD — Max 50 MB each</span>
-            }
-            <InputFile OnChange="OnFilesSelected"
-                       multiple
-                       accept=".pdf,.txt,.md"
-                       disabled="@_isUploading"
-                       class="upload-input" />
-        </label>
+        <!-- Step 1: Chunking Strategy Selection -->
+        <div class="step-block">
+            <div class="step-number">1</div>
+            <div class="step-content">
+                <h3 class="step-title">Select Chunking Method</h3>
+                <p class="step-description">Choose how to split your document into chunks for better retrieval:</p>
+                <select @bind="_selectedChunkingStrategy" class="strategy-dropdown">
+                    <option value="0">📦 Fixed Size — Fast, simple (default)</option>
+                    <option value="1">📄 Content Aware — Respects sentences & markdown</option>
+                    <option value="2">🧠 Semantic — Preserves meaning & context</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Step 2: Upload Files -->
+        <div class="step-block">
+            <div class="step-number">2</div>
+            <div class="step-content">
+                <h3 class="step-title">Upload Documents</h3>
+                <p class="step-description">Drop your PDF, TXT, or Markdown files here:</p>
+                <label class="upload-zone @(_isUploading ? "uploading" : "")">
+                    @if (_isUploading)
+                    {
+                        <div class="upload-spinner"></div>
+                        <span>Uploading...</span>
+                    }
+                    else
+                    {
+                        <span class="material-symbols-rounded upload-icon">upload</span>
+                        <span class="upload-label">Drop files here or <strong>click to browse</strong></span>
+                        <span class="upload-hint">Supported: PDF, TXT, MD — Max 50 MB each</span>
+                    }
+                    <InputFile OnChange="OnFilesSelected"
+                               multiple
+                               accept=".pdf,.txt,.md"
+                               disabled="@_isUploading"
+                               class="upload-input" />
+                </label>
+
+                <!-- Pending Files Preview -->
+                @if (_hasPendingFiles && _pendingFiles.Count > 0)
+                {
+                    <div class="pending-files-preview">
+                        <div class="preview-header">
+                            <span class="material-symbols-rounded preview-icon">check_circle</span>
+                            <span><strong>@_pendingFiles.Count file(s) ready to upload:</strong></span>
+                        </div>
+                        <ul class="files-list">
+                            @foreach (var file in _pendingFiles)
+                            {
+                                <li class="file-item">
+                                    <span class="material-symbols-rounded file-icon">
+                                        @(file.ContentType.Contains("pdf") ? "picture_as_pdf" : "description")
+                                    </span>
+                                    <span class="file-name">@file.Name</span>
+                                    <span class="file-size">@(file.Size / 1024.0 / 1024.0 < 1 ? $"{file.Size / 1024.0:F1} KB" : $"{file.Size / 1024.0 / 1024.0:F1} MB")</span>
+                                </li>
+                            }
+                        </ul>
+
+                        <!-- Upload & Cancel Buttons -->
+                        <div class="action-buttons">
+                            <button class="btn-upload" @onclick="UploadConfirmedAsync" disabled="@_isUploading">
+                                <span class="material-symbols-rounded">cloud_upload</span>
+                                Upload Files
+                            </button>
+                            <button class="btn-cancel" @onclick="CancelUpload" disabled="@_isUploading">
+                                <span class="material-symbols-rounded">close</span>
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
 
         @if (_uploadMessage is not null)
         {
@@ -88,6 +145,7 @@
                             <th>File Name</th>
                             <th>Size</th>
                             <th>Chunks</th>
+                            <th>Method</th>
                             <th>Uploaded</th>
                             <th>Status</th>
                             <th>Action</th>
@@ -105,6 +163,11 @@
                                 </td>
                                 <td>@doc.FileSizeDisplay</td>
                                 <td>@doc.ChunkCount</td>
+                                <td>
+                                    <span class="method-badge @GetMethodClass(doc.ChunkingMethod)">
+                                        @GetMethodDisplay(doc.ChunkingMethod)
+                                    </span>
+                                </td>
                                 <td>@doc.UploadedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
                                 <td>
                                     <span class="status-badge @GetStatusClass(doc.Status)">

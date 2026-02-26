@@ -14,11 +14,8 @@ public class EmbeddingService(
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     ILogger<EmbeddingService> logger)
 {
-    private const int ChunkSize    = 500;
-    private const int ChunkOverlap = 100;
-
     // ── Main entry point called after file upload ──────────────────────────
-    public async Task ProcessDocumentAsync(Guid documentId, Stream fileStream, string contentType)
+    public async Task ProcessDocumentAsync(Guid documentId, Stream fileStream, string contentType, ChunkingStrategy strategy = ChunkingStrategy.FixedSize)
     {
         // Use a new scope for background processing (since EmbeddingService is Scoped)
         using var scope = scopeFactory.CreateScope();
@@ -49,15 +46,18 @@ public class EmbeddingService(
 
             // 2. Chunk text from all pages
             var chunks = new List<DocumentChunk>();
+            var chunkingStrategy = GetChunkingStrategy(strategy);
+            
             foreach (var (text, pageNumber) in pages)
             {
-                var pageChunks = ChunkText(text, pageNumber);
+                var pageChunks = chunkingStrategy.ChunkText(text, pageNumber);
                 chunks.AddRange(pageChunks.Select(c => new DocumentChunk
                 {
                     DocumentId = documentId,
                     ChunkText  = c.Text,
                     PageNumber = pageNumber,
-                    ChunkIndex = c.Index
+                    ChunkIndex = c.Index,
+                    ChunkingMethod = strategy.ToString()
                 }));
             }
 
@@ -123,6 +123,15 @@ public class EmbeddingService(
         return vector;
     }
 
+    // ── Text chunking strategy selector ────────────────────────────────────
+    private static IChunkingStrategy GetChunkingStrategy(ChunkingStrategy strategy) =>
+        strategy switch
+        {
+            ChunkingStrategy.ContentAware => new ContentAwareChunkingStrategy(),
+            ChunkingStrategy.Semantic => new SemanticChunkingStrategy(),
+            _ => new FixedSizeChunkingStrategy()
+        };
+
     // ── Text extraction ────────────────────────────────────────────────────
     private static List<(string Text, int PageNumber)> ExtractPages(Stream stream, string contentType)
     {
@@ -145,26 +154,5 @@ public class EmbeddingService(
                 result.Add((text, page.Number));
         }
         return result;
-    }
-
-    // ── Text chunking ──────────────────────────────────────────────────────
-    private static List<(string Text, int Index)> ChunkText(string text, int pageNumber)
-    {
-        var chunks = new List<(string, int)>();
-        int index  = 0;
-        int start  = 0;
-
-        while (start < text.Length)
-        {
-            int end   = Math.Min(start + ChunkSize, text.Length);
-            string chunk = text[start..end].Trim();
-
-            if (!string.IsNullOrWhiteSpace(chunk))
-                chunks.Add((chunk, index++));
-
-            start += ChunkSize - ChunkOverlap;
-        }
-
-        return chunks;
     }
 }

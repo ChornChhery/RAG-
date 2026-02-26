@@ -1,5 +1,6 @@
 using ChatBot.Server.Services;
 using ChatBot.Share.DTOs;
+using ChatBot.Share.Enums;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ChatBot.Server.Controllers;
@@ -34,7 +35,7 @@ public class DocumentsController(
     // POST /api/documents/upload
     [HttpPost("upload")]
     [RequestSizeLimit(50 * 1024 * 1024)] // 50 MB max
-    public async Task<ActionResult<UploadResponse>> Upload(IFormFile file)
+    public async Task<ActionResult<UploadResponse>> Upload(IFormFile file, [FromQuery] ChunkingStrategy strategy = ChunkingStrategy.FixedSize)
     {
         if (file is null || file.Length == 0)
             return BadRequest(UploadResponse.Fail("unknown", "No file provided."));
@@ -57,7 +58,7 @@ public class DocumentsController(
             _ = Task.Run(async () =>
             {
                 using var stream = new MemoryStream(fileBytes);
-                await embeddingService.ProcessDocumentAsync(doc.Id, stream, file.ContentType);
+                await embeddingService.ProcessDocumentAsync(doc.Id, stream, file.ContentType, strategy);
             });
 
             logger.LogInformation("Upload accepted: {File} ({Id})", file.FileName, doc.Id);

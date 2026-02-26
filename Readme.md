@@ -9,7 +9,7 @@ A Retrieval-Augmented Generation (RAG) Chatbot built with .NET 10, Blazor WebAss
 - 📄 **Multi-Format Document Support** — Upload PDF, TXT, and Markdown files
 - 💬 **Real-Time Streaming Chat** — Token-by-token responses via SignalR
 - 🔍 **Vector Search** — Semantic document retrieval using embeddings
-- 🏗️ **Automatic Chunking** — Intelligent document splitting for better context
+- 🏗️ **Multiple Chunking Strategies** — FixedSize, ContentAware, and Semantic methods
 - 📌 **Source Attribution** — View which document chunks were used in responses
 - 🎯 **Local LLM** — No cloud dependency, full privacy with Ollama
 - 🚀 **Full-Stack .NET** — Type-safe end-to-end architecture
@@ -119,6 +119,31 @@ This ensures responses are grounded in your uploaded documents.
 
 ---
 
+## Chunking Strategies 🔀
+
+Choose the best chunking method for your documents during upload:
+
+| Strategy | How It Works | Best For | Speed |
+|--|--|--|--|
+| **FixedSize** (Default) | Splits text into fixed 500-char chunks with 100-char overlap | Quick indexing, simple documents, prototyping | ⚡ Fast |
+| **ContentAware** | Respects sentence boundaries, markdown structure, paragraphs; variable-size chunks (100-1000 chars) | Markdown docs, mixed content, structured text | 🔶 Medium |
+| **Semantic** | Groups sentences by topic coherence, maximizes meaning preservation; word-overlap based similarity | Research papers, long-form content, high accuracy needed | 🟡 Slower |
+
+### How to Select a Chunking Method
+
+1. Go to the RAG page: `http://localhost:5105/rag`
+2. Use the **"Chunking Method"** dropdown before uploading
+3. Select your preferred strategy
+4. Upload your document — it will be chunked accordingly
+
+### Recommendations
+
+- **Start with FixedSize** if unsure — it's fast and works for most use cases
+- **Use ContentAware** for markdown/structured documents (README.md, wikis, formatted guides)
+- **Use Semantic** for dense content where context is critical (academic papers, technical manuals)
+
+---
+
 ## Setup Guide
 
 ### 1. Clone or Download the Project
@@ -166,11 +191,14 @@ Common connection string formats:
 ### 5. Run Database Migrations
 ```bash
 cd ChatBot.Server
-dotnet ef migrations add InitialCreate --output-dir Data/Migrations
 dotnet ef database update
 ```
 
-This creates the `Documents` and `DocumentChunks` tables automatically.
+This applies the initial schema and creates the `Documents`, `DocumentChunks`, and related tables.
+
+**Note:** If this is your first time running, Entity Framework automatically applies all migrations including:
+- `InitialCreate` — Initial database schema
+- `AddChunkingMethod` — Adds chunking strategy tracking to document chunks
 
 ### 6. Start Ollama
 

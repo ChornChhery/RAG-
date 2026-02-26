@@ -23,6 +23,9 @@ public class DocumentDto
     /// <summary>How many text chunks this document was split into.</summary>
     public int ChunkCount { get; set; }
 
+    /// <summary>The chunking strategy used to process this document (FixedSize, ContentAware, Semantic).</summary>
+    public string ChunkingMethod { get; set; } = "FixedSize";
+
     /// <summary>If Status is Failed, this describes what went wrong.</summary>
     public string? ErrorMessage { get; set; }
 

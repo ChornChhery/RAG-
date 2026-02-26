@@ -31,6 +31,9 @@ public class DocumentChunk
     /// </summary>
     public string EmbeddingJson { get; set; } = string.Empty;
 
+    /// <summary>The chunking strategy used to create this chunk (e.g., FixedSize, ContentAware, Semantic).</summary>
+    public string ChunkingMethod { get; set; } = "FixedSize";
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // ── Navigation ─────────────────────────────────────────────────────────
